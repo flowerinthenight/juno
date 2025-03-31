@@ -1,6 +1,6 @@
 use clap::Parser;
 
-/// Something of the sort. Please honor the period.
+/// Spanner-backed PubSub system.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 #[clap(verbatim_doc_comment)]
@@ -9,16 +9,16 @@ struct Args {
     #[arg(long)]
     id: String,
 
-    /// Spanner database (projects/p/instances/i/databases/db)
+    /// Spanner database URL (format: 'projects/p/instances/i/databases/db')
     #[arg(long)]
     db: String,
 
     /// Spanner database for hedge-rs (same with `--db` if not set)
-    #[arg(long)]
+    #[arg(long, long, default_value = "*")]
     db_hedge: String,
 
     /// Spanner table (for hedge-rs)
-    #[arg(long)]
+    #[arg(long, long, default_value = "juno")]
     table: String,
 
     /// Lock name (for hedge-rs)
