@@ -5,19 +5,30 @@ use clap::Parser;
 #[command(version, about, long_about = None)]
 #[clap(verbatim_doc_comment)]
 struct Args {
-    /// Name of the person to greet
-    #[arg(short, long)]
-    name: String,
+    /// Node id (format should be host:port)
+    #[arg(long)]
+    id: String,
 
-    /// Number of times to greet
-    #[arg(short, long, default_value_t = 1)]
-    count: u8,
+    /// Spanner database (projects/p/instances/i/databases/db)
+    #[arg(long)]
+    db: String,
+
+    /// Spanner database for hedge-rs (same with `--db` if not set)
+    #[arg(long)]
+    db_hedge: String,
+
+    /// Spanner table (for hedge-rs)
+    #[arg(long)]
+    table: String,
+
+    /// Lock name (for hedge-rs)
+    #[arg(short, long, default_value = "juno")]
+    name: String,
 }
 
 fn main() {
     let args = Args::parse();
 
-    for _ in 0..args.count {
-        println!("Hello {}!", args.name);
-    }
+    println!("id: {}!", args.id);
+    println!("db: {}!", args.db);
 }
