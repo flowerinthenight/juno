@@ -140,9 +140,9 @@ checksum = "89e25b6adfb930f02d1981565a6e5d9c547ac15a96606256d3b59040e5cd4ca3"
 
 [[package]]
 name = "bigdecimal"
-version = "0.4.7"
+version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f31f3af01c5c65a07985c804d3366560e6fa7883d640a122819b14ec327482c"
+checksum = "1a22f228ab7a1b23027ccc6c350b72868017af7ea8356fbdf19f8d991c690013"
 dependencies = [
  "autocfg",
  "libm",
@@ -193,9 +193,9 @@ checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
 name = "clap"
-version = "4.5.34"
+version = "4.5.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e958897981290da2a852763fe9cdb89cd36977a5d729023127095fa94d95e2ff"
+checksum = "d8aa86934b44c19c50f87cc2790e19f54f7a67aedb64101c2e1a2e5ecfb73944"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -203,9 +203,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.34"
+version = "4.5.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83b0f35019843db2160b5bb19ae09b4e6411ac33fc6a712003c33e03090e2489"
+checksum = "2414dbb2dd0695280da6ea9261e327479e9d37b0630f6b53ba2a11c60c679fd9"
 dependencies = [
  "anstream",
  "anstyle",
@@ -334,9 +334,9 @@ dependencies = [
 
 [[package]]
 name = "env_logger"
-version = "0.11.7"
+version = "0.11.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3716d7a920fb4fac5d84e9d4bce8ceb321e9414b4409da61b07b75c1e3d0697"
+checksum = "13c863f0904021b108aa8b2f55046443e6b1ebde8fd4a15c399893aae4fa069f"
 dependencies = [
  "anstream",
  "anstyle",
@@ -378,9 +378,9 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 
 [[package]]
 name = "flate2"
-version = "1.1.0"
+version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11faaf5a5236997af9848be0bef4db95824b1d534ebc64d0f0c6cf3e67bd38dc"
+checksum = "7ced92e76e966ca2fd84c8f7aa01a4aea65b0eb6648d72f7c8f3e2764a67fece"
 dependencies = [
  "crc32fast",
  "miniz_oxide",
@@ -457,14 +457,13 @@ dependencies = [
 
 [[package]]
 name = "gcloud-auth"
-version = "1.0.0"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "059e4cb9bbfb037d0dc0ddce9d55debbec7615b0580322b454a8512b26e76ba8"
+checksum = "5fd8eea2ecfa2074d3b7b82f0bb03338f12a5299c9dbed5b9c7f23bc8d3d0059"
 dependencies = [
  "async-trait",
  "base64 0.21.7",
  "gcloud-metadata",
- "gcloud-token",
  "home",
  "jsonwebtoken",
  "reqwest",
@@ -472,6 +471,7 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "time",
+ "token-source",
  "tokio",
  "tracing",
  "urlencoding",
@@ -479,13 +479,13 @@ dependencies = [
 
 [[package]]
 name = "gcloud-gax"
-version = "1.0.0"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00def59b6f24b6d0a8468175591ce43e03a0ece87c437880f28e6dd5cd4a3ebd"
+checksum = "8681b9297b27c847255045959a7cbc042288a84df7edf41df97e67227dbd9e13"
 dependencies = [
- "gcloud-token",
  "http",
  "thiserror 1.0.69",
+ "token-source",
  "tokio",
  "tokio-retry2",
  "tonic",
@@ -506,9 +506,9 @@ dependencies = [
 
 [[package]]
 name = "gcloud-longrunning"
-version = "1.0.0"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "324b85d1d496e46564d6e59fa78c22df89c609d52f6e31598ad2c1d779260c20"
+checksum = "df764808e7ce603ef7991bc18c6523e0111cf7754ee5be4edd2cdbe847abcb10"
 dependencies = [
  "gcloud-gax",
  "gcloud-googleapis",
@@ -529,9 +529,9 @@ dependencies = [
 
 [[package]]
 name = "gcloud-spanner"
-version = "1.0.0"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b1fbcff08a133fc532330c527a0c4e29c5791c309c43ab3f41758c5ce19938a"
+checksum = "a5e6b8ab6ba642197071735014c05dfbdd20335521b760698b1111d48a6ed0d0"
 dependencies = [
  "base64 0.21.7",
  "bigdecimal",
@@ -539,24 +539,15 @@ dependencies = [
  "gcloud-gax",
  "gcloud-googleapis",
  "gcloud-longrunning",
- "gcloud-token",
  "parking_lot",
  "prost-types",
  "serde",
  "thiserror 1.0.69",
  "time",
+ "token-source",
  "tokio",
  "tokio-util",
  "tracing",
-]
-
-[[package]]
-name = "gcloud-token"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84e20db637faf228be7bbf39a9e3ea3e36e6ead323662974f53926f21dcee39e"
-dependencies = [
- "async-trait",
 ]
 
 [[package]]
@@ -629,9 +620,9 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hedge_rs"
-version = "0.1.16"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44bad191ed7151cd95fb2a9a459f5779cfc08b306537456b19b2f8714e9537f7"
+checksum = "5bbe2d498dc417ed61d04604f87735ad9994a591d2476cf186e6b49c508d4db9"
 dependencies = [
  "anyhow",
  "base64ct",
@@ -753,9 +744,9 @@ dependencies = [
 
 [[package]]
 name = "hyper-util"
-version = "0.1.10"
+version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df2dcfbe0677734ab2f3ffa7fa7bfd4706bfdc1ef393f2ee30184aed67e631b4"
+checksum = "497bbc33a26fdd4af9ed9c70d63f61cf56a938375fbb32df34db9b1cd6d643f2"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -763,6 +754,7 @@ dependencies = [
  "http",
  "http-body",
  "hyper",
+ "libc",
  "pin-project-lite",
  "socket2",
  "tokio",
@@ -1545,9 +1537,9 @@ checksum = "719b953e2095829ee67db738b3bfa9fa368c94900df327b3f07fe6e794d2fe1f"
 
 [[package]]
 name = "rustix"
-version = "1.0.3"
+version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e56a18552996ac8d29ecc3b190b4fdbb2d91ca4ec396de7bbffaf43f3d637e96"
+checksum = "d97817398dd4bb2e6da002002db259209759911da105da92bec29ccb12cf58bf"
 dependencies = [
  "bitflags",
  "errno",
@@ -1900,6 +1892,15 @@ checksum = "9117f5d4db391c1cf6927e7bea3db74b9a1c1add8f7eda9ffd5364f40f57b82f"
 dependencies = [
  "displaydoc",
  "zerovec",
+]
+
+[[package]]
+name = "token-source"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75746ae15bef509f21039a652383104424208fdae172a964a8930858b9a78412"
+dependencies = [
+ "async-trait",
 ]
 
 [[package]]

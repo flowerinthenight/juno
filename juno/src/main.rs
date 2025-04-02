@@ -67,8 +67,7 @@ fn main() -> Result<()> {
             .table(args.table)
             .name(args.name)
             .lease_ms(3_000)
-            .tx_toleader(Some(tx_comms.clone()))
-            .tx_broadcast(Some(tx_comms.clone()))
+            .tx_comms(Some(tx_comms.clone()))
             .build(),
     ));
 
@@ -104,6 +103,7 @@ fn main() -> Result<()> {
                         write!(&mut reply, "echo '{msg_s}' from {}", id_handler.to_string()).unwrap();
                         tx.send(reply.as_bytes().to_vec()).unwrap();
                     }
+                    Comms::OnLeaderChange(_) => {}
                 },
                 Err(e) => {
                     error!("{e}");
