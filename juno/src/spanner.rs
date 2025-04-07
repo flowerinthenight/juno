@@ -40,14 +40,7 @@ pub enum Ctrl {
 // here through ProtoCtrl commands using channels for exchanging information. This is an easier
 // approach for allowing our main threads to have access to async function calls. Here, a single
 // tokio runtime is being used to block on these async calls.
-pub fn spanner_caller(
-    db: String,
-    table: String,
-    name: String,
-    id: String,
-    rx_ctrl: Receiver<Ctrl>,
-    tx_ok: Sender<Result<()>>,
-) {
+pub fn caller(db: String, table: String, name: String, id: String, rx_ctrl: Receiver<Ctrl>, tx_ok: Sender<Result<()>>) {
     let rt = Runtime::new().unwrap();
     let (tx, rx): (Sender<Option<Client>>, Receiver<Option<Client>>) = unbounded();
     rt.block_on(async {

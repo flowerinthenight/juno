@@ -137,11 +137,11 @@ fn main() -> Result<()> {
     });
 
     let (tx_work, rx_work): (Sender<WorkerCtrl>, Receiver<WorkerCtrl>) = unbounded();
-    let rxs: Arc<Mutex<HashMap<usize, Receiver<WorkerCtrl>>>> = Arc::new(Mutex::new(HashMap::new()));
+    let rxh: Arc<Mutex<HashMap<usize, Receiver<WorkerCtrl>>>> = Arc::new(Mutex::new(HashMap::new()));
     let cpus = num_cpus::get();
 
     for i in 0..cpus {
-        let recv = rxs.clone();
+        let recv = rxh.clone();
 
         {
             let mut rv = recv.lock().unwrap();
@@ -149,15 +149,15 @@ fn main() -> Result<()> {
         }
     }
 
-    // Start our worker threads for our TCP server.
+    // Start our API worker threads.
     for i in 0..cpus {
-        let recv = rxs.clone();
+        let rxc = rxh.clone();
         thread::spawn(move || {
             loop {
-                let mut rx: Option<Receiver<WorkerCtrl>> = None;
+                let mut o_rx: Option<Receiver<WorkerCtrl>> = None;
 
                 {
-                    let rxval = match recv.lock() {
+                    let rxv = match rxc.lock() {
                         Ok(v) => v,
                         Err(e) => {
                             error!("T{i}: lock failed: {e}");
@@ -165,20 +165,27 @@ fn main() -> Result<()> {
                         }
                     };
 
-                    if let Some(v) = rxval.get(&i) {
-                        rx = Some(v.clone());
+                    if let Some(v) = rxv.get(&i) {
+                        o_rx = Some(v.clone());
                     }
                 }
 
-                match rx.unwrap().recv().unwrap() {
+                if o_rx.is_none() {
+                    continue;
+                }
+
+                let rx = o_rx.unwrap();
+                match rx.recv().unwrap() {
                     WorkerCtrl::HandleApi(stream) => {
                         let start = Instant::now();
 
                         defer! {
                             debug!("[T{i}]: tcp took {:?}", start.elapsed());
                         }
+
+                        _ = stream;
                     }
-                    _ => {}
+                    _ => {} // add here for tasks that need these workers
                 }
             }
         });
