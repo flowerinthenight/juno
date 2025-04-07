@@ -103,7 +103,9 @@ fn main() -> Result<()> {
                         write!(&mut reply, "echo '{msg_s}' from {}", id_handler.to_string()).unwrap();
                         tx.send(reply.as_bytes().to_vec()).unwrap();
                     }
-                    Comms::OnLeaderChange(_) => {}
+                    Comms::OnLeaderChange(state) => {
+                        info!("leader state change: {state}");
+                    }
                 },
                 Err(e) => {
                     error!("{e}");
