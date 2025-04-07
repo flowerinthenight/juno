@@ -1,8 +1,11 @@
+mod spanner;
+
 use anyhow::Result;
 use clap::Parser;
 use ctrlc;
 use hedge_rs::*;
 use log::*;
+use spanner::*;
 use std::{
     fmt::Write as _,
     io::{BufReader, prelude::*},
@@ -14,6 +17,9 @@ use std::{
     thread,
 };
 
+#[macro_use(defer)]
+extern crate scopeguard;
+
 /// Simple PubSub system using Cloud Spanner as backing storage.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -22,6 +28,10 @@ struct Args {
     /// Node id (format should be host:port)
     #[arg(long, long, default_value = "0.0.0.0:8080")]
     id: String,
+
+    /// Host:port for the API (format should be host:port)
+    #[arg(long, long, default_value = "0.0.0.0:9090")]
+    api: String,
 
     /// Spanner database URL (format: 'projects/p/instances/i/databases/db')
     #[arg(long)]
@@ -40,7 +50,7 @@ struct Args {
     name: String,
 
     /// Host:port for test TCP server (tmp)
-    #[arg(long, default_value = "0.0.0.0:9090")]
+    #[arg(long, default_value = "0.0.0.0:9091")]
     test_tcp: String,
 }
 
@@ -115,14 +125,80 @@ fn main() -> Result<()> {
         }
     });
 
+    // Starts a new thread for the API.
+    let op_api = op.clone();
+    let hp_api = args.api.clone();
+    thread::spawn(move || {
+        let listen = TcpListener::bind(hp_api.to_string()).unwrap();
+        for stream in listen.incoming() {
+            match stream {
+                Err(_) => break,
+                Ok(v) => {
+                    let mut reader = BufReader::new(&v);
+                    let mut msg = String::new();
+                    reader.read_line(&mut msg).unwrap();
+
+                    if msg.starts_with("q") {
+                        break;
+                    }
+
+                    if msg.starts_with("send") {
+                        let send = msg[..msg.len() - 1].to_string();
+                        match op_api.lock().unwrap().send(send.as_bytes().to_vec()) {
+                            Ok(v) => info!("reply from leader: {}", String::from_utf8(v).unwrap()),
+                            Err(e) => error!("send failed: {e}"),
+                        }
+
+                        continue;
+                    }
+
+                    if msg.starts_with("broadcast") {
+                        let (tx_reply, rx_reply): (Sender<Broadcast>, Receiver<Broadcast>) = channel();
+                        let send = msg[..msg.len() - 1].to_string();
+
+                        {
+                            op_api
+                                .lock()
+                                .unwrap()
+                                .broadcast(send.as_bytes().to_vec(), tx_reply)
+                                .unwrap();
+                        }
+
+                        // Read through all the replies from all nodes. An empty
+                        // id or message marks the end of the streaming reply.
+                        loop {
+                            match rx_reply.recv().unwrap() {
+                                Broadcast::ReplyStream { id, msg, error } => {
+                                    if id == "" || msg.len() == 0 {
+                                        break;
+                                    }
+
+                                    if error {
+                                        error!("{:?}", String::from_utf8(msg).unwrap());
+                                    } else {
+                                        info!("{:?}", String::from_utf8(msg).unwrap());
+                                    }
+                                }
+                            }
+                        }
+
+                        continue;
+                    }
+
+                    info!("{msg:?} not supported");
+                }
+            };
+        }
+    });
+
     // Starts a new thread for our test TCP server. Messages that start with 'q' will cause the
     // server thread to terminate. Messages that begin with 'send' will send that message to
     // the current leader. Finally, messages that begin with 'broadcast' will broadcast that
     // message to all nodes in the group.
     let op_tcp = op.clone();
-    let host_port = args.test_tcp.clone();
+    let hp_tcp = args.test_tcp.clone();
     thread::spawn(move || {
-        let listen = TcpListener::bind(host_port.to_string()).unwrap();
+        let listen = TcpListener::bind(hp_tcp.to_string()).unwrap();
         for stream in listen.incoming() {
             match stream {
                 Err(_) => break,
@@ -148,11 +224,14 @@ fn main() -> Result<()> {
                     if msg.starts_with("broadcast") {
                         let (tx_reply, rx_reply): (Sender<Broadcast>, Receiver<Broadcast>) = channel();
                         let send = msg[..msg.len() - 1].to_string();
-                        op_tcp
-                            .lock()
-                            .unwrap()
-                            .broadcast(send.as_bytes().to_vec(), tx_reply)
-                            .unwrap();
+
+                        {
+                            op_tcp
+                                .lock()
+                                .unwrap()
+                                .broadcast(send.as_bytes().to_vec(), tx_reply)
+                                .unwrap();
+                        }
 
                         // Read through all the replies from all nodes. An empty
                         // id or message marks the end of the streaming reply.
