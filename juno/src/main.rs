@@ -52,7 +52,7 @@ struct Args {
 
 #[derive(Debug)]
 enum WorkerCtrl {
-    TcpServer(TcpStream),
+    HandleApi(TcpStream),
     PingMember(String),
     ToLeader {
         msg: Vec<u8>,
@@ -171,7 +171,7 @@ fn main() -> Result<()> {
                 }
 
                 match rx.unwrap().recv().unwrap() {
-                    WorkerCtrl::TcpServer(stream) => {
+                    WorkerCtrl::HandleApi(stream) => {
                         let start = Instant::now();
 
                         defer! {
@@ -198,7 +198,7 @@ fn main() -> Result<()> {
                 }
             };
 
-            tx_api.send(WorkerCtrl::TcpServer(stream)).unwrap();
+            tx_api.send(WorkerCtrl::HandleApi(stream)).unwrap();
         }
     });
 
