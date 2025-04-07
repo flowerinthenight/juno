@@ -1009,6 +1009,7 @@ dependencies = [
  "gcloud-spanner",
  "hedge_rs",
  "log",
+ "num_cpus",
  "scopeguard",
  "time",
  "tokio",

@@ -2,19 +2,19 @@ mod spanner;
 
 use anyhow::Result;
 use clap::Parser;
+use crossbeam_channel::{Receiver, Sender, unbounded};
 use ctrlc;
 use hedge_rs::*;
 use log::*;
 use spanner::*;
 use std::{
+    collections::HashMap,
     fmt::Write as _,
     io::{BufReader, prelude::*},
-    net::TcpListener,
-    sync::{
-        Arc, Mutex,
-        mpsc::{Receiver, Sender, channel},
-    },
+    net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream},
+    sync::{Arc, Mutex, mpsc},
     thread,
+    time::Instant,
 };
 
 #[macro_use(defer)]
@@ -48,22 +48,33 @@ struct Args {
     /// Lock name (for hedge-rs)
     #[arg(short, long, default_value = "juno")]
     name: String,
+}
 
-    /// Host:port for test TCP server (tmp)
-    #[arg(long, default_value = "0.0.0.0:9091")]
-    test_tcp: String,
+#[derive(Debug)]
+enum WorkerCtrl {
+    TcpServer(TcpStream),
+    PingMember(String),
+    ToLeader {
+        msg: Vec<u8>,
+        tx: Sender<Vec<u8>>,
+    },
+    Broadcast {
+        name: String,
+        msg: Vec<u8>,
+        tx: Sender<Vec<u8>>,
+    },
 }
 
 fn main() -> Result<()> {
     env_logger::init();
     let args = Args::parse();
 
-    let (tx, rx) = channel();
-    ctrlc::set_handler(move || tx.send(()).unwrap())?;
+    let (tx_ctrlc, rx_ctrlc) = mpsc::channel();
+    ctrlc::set_handler(move || tx_ctrlc.send(()).unwrap())?;
 
     // We will use this channel for the 'send' and 'broadcast' features.
     // Use Sender as inputs, then we read replies through the Receiver.
-    let (tx_comms, rx_comms): (Sender<Comms>, Receiver<Comms>) = channel();
+    let (tx_op, rx_op): (mpsc::Sender<Comms>, mpsc::Receiver<Comms>) = mpsc::channel();
 
     let mut db_hedge = String::new();
     if args.db_hedge == "*" {
@@ -77,7 +88,7 @@ fn main() -> Result<()> {
             .table(args.table)
             .name(args.name)
             .lease_ms(3_000)
-            .tx_comms(Some(tx_comms.clone()))
+            .tx_comms(Some(tx_op.clone()))
             .build(),
     ));
 
@@ -89,7 +100,7 @@ fn main() -> Result<()> {
     let id_handler = args.id.clone();
     thread::spawn(move || {
         loop {
-            match rx_comms.recv() {
+            match rx_op.recv() {
                 Ok(v) => match v {
                     // This is our 'send' handler. When we are leader, we reply to all
                     // messages coming from other nodes using the send() API here.
@@ -125,142 +136,73 @@ fn main() -> Result<()> {
         }
     });
 
+    let (tx_work, rx_work): (Sender<WorkerCtrl>, Receiver<WorkerCtrl>) = unbounded();
+    let rxs: Arc<Mutex<HashMap<usize, Receiver<WorkerCtrl>>>> = Arc::new(Mutex::new(HashMap::new()));
+    let cpus = num_cpus::get();
+
+    for i in 0..cpus {
+        let recv = rxs.clone();
+
+        {
+            let mut rv = recv.lock().unwrap();
+            rv.insert(i, rx_work.clone());
+        }
+    }
+
+    // Start our worker threads for our TCP server.
+    for i in 0..cpus {
+        let recv = rxs.clone();
+        thread::spawn(move || {
+            loop {
+                let mut rx: Option<Receiver<WorkerCtrl>> = None;
+
+                {
+                    let rxval = match recv.lock() {
+                        Ok(v) => v,
+                        Err(e) => {
+                            error!("T{i}: lock failed: {e}");
+                            break;
+                        }
+                    };
+
+                    if let Some(v) = rxval.get(&i) {
+                        rx = Some(v.clone());
+                    }
+                }
+
+                match rx.unwrap().recv().unwrap() {
+                    WorkerCtrl::TcpServer(stream) => {
+                        let start = Instant::now();
+
+                        defer! {
+                            debug!("[T{i}]: tcp took {:?}", start.elapsed());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        });
+    }
+
     // Starts a new thread for the API.
-    let op_api = op.clone();
+    let tx_api = tx_work.clone();
     let hp_api = args.api.clone();
     thread::spawn(move || {
         let listen = TcpListener::bind(hp_api.to_string()).unwrap();
         for stream in listen.incoming() {
-            match stream {
-                Err(_) => break,
-                Ok(v) => {
-                    let mut reader = BufReader::new(&v);
-                    let mut msg = String::new();
-                    reader.read_line(&mut msg).unwrap();
-
-                    if msg.starts_with("q") {
-                        break;
-                    }
-
-                    if msg.starts_with("send") {
-                        let send = msg[..msg.len() - 1].to_string();
-                        match op_api.lock().unwrap().send(send.as_bytes().to_vec()) {
-                            Ok(v) => info!("reply from leader: {}", String::from_utf8(v).unwrap()),
-                            Err(e) => error!("send failed: {e}"),
-                        }
-
-                        continue;
-                    }
-
-                    if msg.starts_with("broadcast") {
-                        let (tx_reply, rx_reply): (Sender<Broadcast>, Receiver<Broadcast>) = channel();
-                        let send = msg[..msg.len() - 1].to_string();
-
-                        {
-                            op_api
-                                .lock()
-                                .unwrap()
-                                .broadcast(send.as_bytes().to_vec(), tx_reply)
-                                .unwrap();
-                        }
-
-                        // Read through all the replies from all nodes. An empty
-                        // id or message marks the end of the streaming reply.
-                        loop {
-                            match rx_reply.recv().unwrap() {
-                                Broadcast::ReplyStream { id, msg, error } => {
-                                    if id == "" || msg.len() == 0 {
-                                        break;
-                                    }
-
-                                    if error {
-                                        error!("{:?}", String::from_utf8(msg).unwrap());
-                                    } else {
-                                        info!("{:?}", String::from_utf8(msg).unwrap());
-                                    }
-                                }
-                            }
-                        }
-
-                        continue;
-                    }
-
-                    info!("{msg:?} not supported");
+            let stream = match stream {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("stream failed: {e}");
+                    continue;
                 }
             };
+
+            tx_api.send(WorkerCtrl::TcpServer(stream)).unwrap();
         }
     });
 
-    // Starts a new thread for our test TCP server. Messages that start with 'q' will cause the
-    // server thread to terminate. Messages that begin with 'send' will send that message to
-    // the current leader. Finally, messages that begin with 'broadcast' will broadcast that
-    // message to all nodes in the group.
-    let op_tcp = op.clone();
-    let hp_tcp = args.test_tcp.clone();
-    thread::spawn(move || {
-        let listen = TcpListener::bind(hp_tcp.to_string()).unwrap();
-        for stream in listen.incoming() {
-            match stream {
-                Err(_) => break,
-                Ok(v) => {
-                    let mut reader = BufReader::new(&v);
-                    let mut msg = String::new();
-                    reader.read_line(&mut msg).unwrap();
-
-                    if msg.starts_with("q") {
-                        break;
-                    }
-
-                    if msg.starts_with("send") {
-                        let send = msg[..msg.len() - 1].to_string();
-                        match op_tcp.lock().unwrap().send(send.as_bytes().to_vec()) {
-                            Ok(v) => info!("reply from leader: {}", String::from_utf8(v).unwrap()),
-                            Err(e) => error!("send failed: {e}"),
-                        }
-
-                        continue;
-                    }
-
-                    if msg.starts_with("broadcast") {
-                        let (tx_reply, rx_reply): (Sender<Broadcast>, Receiver<Broadcast>) = channel();
-                        let send = msg[..msg.len() - 1].to_string();
-
-                        {
-                            op_tcp
-                                .lock()
-                                .unwrap()
-                                .broadcast(send.as_bytes().to_vec(), tx_reply)
-                                .unwrap();
-                        }
-
-                        // Read through all the replies from all nodes. An empty
-                        // id or message marks the end of the streaming reply.
-                        loop {
-                            match rx_reply.recv().unwrap() {
-                                Broadcast::ReplyStream { id, msg, error } => {
-                                    if id == "" || msg.len() == 0 {
-                                        break;
-                                    }
-
-                                    if error {
-                                        error!("{:?}", String::from_utf8(msg).unwrap());
-                                    } else {
-                                        info!("{:?}", String::from_utf8(msg).unwrap());
-                                    }
-                                }
-                            }
-                        }
-
-                        continue;
-                    }
-
-                    info!("{msg:?} not supported");
-                }
-            };
-        }
-    });
-
-    rx.recv()?; // wait for Ctrl-C
+    rx_ctrlc.recv()?; // wait for Ctrl-C
     op.lock().unwrap().close();
 
     Ok(())
