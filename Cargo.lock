@@ -1010,6 +1010,7 @@ dependencies = [
  "hedge_rs",
  "log",
  "num_cpus",
+ "regex",
  "scopeguard",
  "time",
  "tokio",

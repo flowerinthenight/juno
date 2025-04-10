@@ -1,12 +1,15 @@
-mod spanner;
-
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use clap::Parser;
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use ctrlc;
+use google_cloud_spanner::{
+    client::{Client, ClientConfig},
+    statement::Statement,
+    value::CommitTimestamp,
+};
 use hedge_rs::*;
 use log::*;
-use spanner::*;
+use regex::Regex;
 use std::{
     collections::HashMap,
     fmt::Write as _,
@@ -16,9 +19,20 @@ use std::{
     thread,
     time::Instant,
 };
+use tokio::runtime::Runtime;
 
 #[macro_use(defer)]
 extern crate scopeguard;
+
+// CREATE TABLE zzz_topics (
+//     name STRING(MAX) NOT NULL,
+//     updated_at TIMESTAMP OPTIONS (
+//         allow_commit_timestamp = true
+//     ),
+// ) PRIMARY KEY(name);
+static TOPICS_TABLE: &'static str = "zzz_topics";
+static SUBSCRIPTIONS_TABLE: &'static str = "zzz_subscriptions";
+static MESSAGES_TABLE: &'static str = "zzz_messages";
 
 /// Simple PubSub system using Cloud Spanner as backing storage.
 #[derive(Parser, Debug)]
@@ -78,7 +92,7 @@ fn main() -> Result<()> {
 
     let mut db_hedge = String::new();
     if args.db_hedge == "*" {
-        db_hedge = args.db;
+        db_hedge = args.db.clone();
     }
 
     let op = Arc::new(Mutex::new(
@@ -152,7 +166,34 @@ fn main() -> Result<()> {
     // Start our API worker threads.
     for i in 0..cpus {
         let rxc = rxh.clone();
+        let db_clone = args.db.clone();
         thread::spawn(move || {
+            let rt = Runtime::new().unwrap();
+            let (tx, rx): (Sender<Option<Client>>, Receiver<Option<Client>>) = unbounded();
+            rt.block_on(async {
+                let config = ClientConfig::default().with_auth().await;
+                match config {
+                    Err(_) => tx.send(None).unwrap(),
+                    Ok(v) => {
+                        let client = Client::new(db_clone, v).await;
+                        match client {
+                            Ok(v) => tx.send(Some(v)).unwrap(),
+                            Err(e) => {
+                                error!("client failed: {e}");
+                                tx.send(None).unwrap();
+                            }
+                        }
+                    }
+                }
+            });
+
+            let read = rx.recv().unwrap();
+            if read.is_none() {
+                return;
+            }
+
+            let client = read.unwrap(); // shouldn't panic
+
             loop {
                 let mut o_rx: Option<Receiver<WorkerCtrl>> = None;
 
@@ -176,14 +217,140 @@ fn main() -> Result<()> {
 
                 let rx = o_rx.unwrap();
                 match rx.recv().unwrap() {
-                    WorkerCtrl::HandleApi(stream) => {
-                        let start = Instant::now();
+                    WorkerCtrl::HandleApi(mut stream) => {
+                        let mut reader = BufReader::new(&stream);
+                        let mut data = String::new();
+                        reader.read_line(&mut data).unwrap();
+                        match data.get(..1).unwrap() {
+                            //
+                            // &<topic-name>\n
+                            //
+                            // Create a topic. Name should start/end with a letter.
+                            // Hyphens are allowed in between.
+                            //
+                            "&" => {
+                                let start = Instant::now();
 
-                        defer! {
-                            debug!("[T{i}]: tcp took {:?}", start.elapsed());
+                                defer! {
+                                    info!("[T{i}]: create-topic took {:?}", start.elapsed());
+                                }
+
+                                let topic = &data[1..&data.len() - 1];
+                                let re = Regex::new(r"^[a-zA-Z]+[a-zA-Z0-9-]+[a-zA-Z0-9]$").unwrap();
+                                if !re.is_match(topic) {
+                                    let mut err = String::new();
+                                    write!(&mut err, "-Invalid format for the topic name\n").unwrap();
+                                    let _ = stream.write_all(err.as_bytes());
+                                    return;
+                                }
+
+                                let (tx_rt, rx_rt): (Sender<String>, Receiver<String>) = unbounded();
+                                rt.block_on(async {
+                                    let mut q = String::new();
+                                    write!(&mut q, "insert {} ", TOPICS_TABLE).unwrap();
+                                    write!(&mut q, "(name, updated_at) ").unwrap();
+                                    write!(&mut q, "values ('{}', ", topic).unwrap();
+                                    write!(&mut q, "PENDING_COMMIT_TIMESTAMP())").unwrap();
+                                    let stmt = Statement::new(q);
+                                    let rwt = client.begin_read_write_transaction().await;
+                                    if let Err(e) = rwt {
+                                        let mut err = String::new();
+                                        write!(&mut err, "{e}").unwrap();
+                                        tx_rt.send(err).unwrap();
+                                        return;
+                                    }
+
+                                    let mut t = rwt.unwrap();
+                                    let res = t.update(stmt).await;
+                                    let res = t.end(res, None).await;
+                                    match res {
+                                        Ok(_) => tx_rt.send(String::new()).unwrap(),
+                                        Err(e) => {
+                                            let mut err = String::new();
+                                            write!(&mut err, "{e}").unwrap();
+                                            tx_rt.send(err).unwrap();
+                                        }
+                                    };
+                                });
+
+                                let res = rx_rt.recv().unwrap();
+                                let mut ack = String::new();
+                                if res.len() != 0 {
+                                    write!(&mut ack, "-{res}\n").unwrap();
+                                } else {
+                                    write!(&mut ack, "+OK\n").unwrap();
+                                }
+
+                                let _ = stream.write_all(ack.as_bytes());
+                            }
+                            //
+                            // ^<topic-name> <subscription-name> <prop1=val1[ prop2=val2]...>\n
+                            //
+                            // Create a subscription. Name should start/end with a letter.
+                            // Hyphens are allowed in between.
+                            //
+                            // Supported properties:
+                            //
+                            //   visibilityTimeout=secs [default=60]
+                            //   autoExtend=bool [default=true]
+                            //
+                            "^" => {
+                                let start = Instant::now();
+
+                                defer! {
+                                    info!("[T{i}]: create-subscription took {:?}", start.elapsed());
+                                }
+
+                                let topic = &data[1..&data.len() - 1];
+                                let re = Regex::new(r"^[a-zA-Z]+[a-zA-Z0-9-]+[a-zA-Z0-9]$").unwrap();
+                                if !re.is_match(topic) {
+                                    let mut err = String::new();
+                                    write!(&mut err, "-Invalid format for the topic name\n").unwrap();
+                                    let _ = stream.write_all(err.as_bytes());
+                                    return;
+                                }
+
+                                let (tx_rt, rx_rt): (Sender<String>, Receiver<String>) = unbounded();
+                                rt.block_on(async {
+                                    let mut q = String::new();
+                                    write!(&mut q, "insert {} ", TOPICS_TABLE).unwrap();
+                                    write!(&mut q, "(name, updated_at) ").unwrap();
+                                    write!(&mut q, "values ('{}', ", topic).unwrap();
+                                    write!(&mut q, "PENDING_COMMIT_TIMESTAMP())").unwrap();
+                                    let stmt = Statement::new(q);
+                                    let rwt = client.begin_read_write_transaction().await;
+                                    if let Err(e) = rwt {
+                                        let mut err = String::new();
+                                        write!(&mut err, "{e}").unwrap();
+                                        tx_rt.send(err).unwrap();
+                                        return;
+                                    }
+
+                                    let mut t = rwt.unwrap();
+                                    let res = t.update(stmt).await;
+                                    let res = t.end(res, None).await;
+                                    match res {
+                                        Ok(_) => tx_rt.send(String::new()).unwrap(),
+                                        Err(e) => {
+                                            let mut err = String::new();
+                                            write!(&mut err, "{e}").unwrap();
+                                            tx_rt.send(err).unwrap();
+                                        }
+                                    };
+                                });
+
+                                let res = rx_rt.recv().unwrap();
+                                let mut ack = String::new();
+                                if res.len() != 0 {
+                                    write!(&mut ack, "-{res}\n").unwrap();
+                                } else {
+                                    write!(&mut ack, "+OK\n").unwrap();
+                                }
+
+                                let _ = stream.write_all(ack.as_bytes());
+                            }
+                            _ => {}
                         }
-
-                        _ = stream;
                     }
                     _ => {} // add here for tasks that need these workers
                 }

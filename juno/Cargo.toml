@@ -17,3 +17,4 @@ scopeguard = "1.2.0"
 uuid = { version = "1.16.0", features = ["v4"] }
 crossbeam-channel = "0.5.14"
 num_cpus = "1.16.0"
+regex = "1.11.1"
