@@ -8,7 +8,7 @@ anyhow = "1.0.97"
 clap = { version = "4.5.35", features = ["derive"] }
 ctrlc = "3.4.6"
 env_logger = "0.11.8"
-hedge_rs = "0.2.2"
+hedge_rs = "0.2.3"
 log = "0.4.27"
 tokio = { version = "1.44.2", features = ["full"] }
 google-cloud-spanner = { package="gcloud-spanner", version="1.2.0" }
@@ -18,3 +18,11 @@ uuid = { version = "1.16.0", features = ["v4"] }
 crossbeam-channel = "0.5.15"
 num_cpus = "1.16.0"
 regex = "1.11.1"
+# We don't depend on rustls, but it's panicking without this.
+# https://github.com/rustls/rustls/issues/1938
+rustls = { version = "0.23.26", default-features = false, features = [
+    "ring",
+    "logging",
+    "std",
+    "tls12",
+] }

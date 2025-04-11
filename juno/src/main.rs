@@ -15,7 +15,11 @@ use std::{
     fmt::Write as _,
     io::{BufReader, prelude::*},
     net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream},
-    sync::{Arc, Mutex, mpsc},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+        mpsc,
+    },
     thread,
     time::Instant,
 };
@@ -95,6 +99,8 @@ fn main() -> Result<()> {
         db_hedge = args.db.clone();
     }
 
+    let leader = Arc::new(AtomicUsize::new(0));
+
     let op = Arc::new(Mutex::new(
         OpBuilder::new()
             .id(args.id.clone())
@@ -111,6 +117,7 @@ fn main() -> Result<()> {
     }
 
     // Start a new thread that will serve as handlers for both send() and broadcast() APIs.
+    let leader_clone = leader.clone();
     let id_handler = args.id.clone();
     thread::spawn(move || {
         loop {
@@ -138,9 +145,7 @@ fn main() -> Result<()> {
                         write!(&mut reply, "echo '{msg_s}' from {}", id_handler.to_string()).unwrap();
                         tx.send(reply.as_bytes().to_vec()).unwrap();
                     }
-                    Comms::OnLeaderChange(state) => {
-                        info!("leader state change: {state}");
-                    }
+                    Comms::OnLeaderChange(state) => leader_clone.store(state, Ordering::Relaxed),
                 },
                 Err(e) => {
                     error!("{e}");

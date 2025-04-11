@@ -614,9 +614,9 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hedge_rs"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d974485883b48341c884519a77a6727062242c86b161f80385c174f76eae621"
+checksum = "a5a3e229ac3b30cde195f4a1985e3a3fd44948e0c2dd6971c00848e16cffd121"
 dependencies = [
  "anyhow",
  "base64ct",
@@ -995,6 +995,7 @@ dependencies = [
  "log",
  "num_cpus",
  "regex",
+ "rustls",
  "scopeguard",
  "time",
  "tokio",
@@ -1512,12 +1513,13 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.25"
+version = "0.23.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "822ee9188ac4ec04a2f0531e55d035fb2de73f18b41a63c70c2712503b6fb13c"
+checksum = "df51b5869f3a441595eac5e8ff14d486ff285f7b8c0df8770e49c3b56351f0f0"
 dependencies = [
  "log",
  "once_cell",
+ "ring",
  "rustls-pki-types",
  "rustls-webpki",
  "subtle",
@@ -1698,9 +1700,9 @@ dependencies = [
 
 [[package]]
 name = "spindle_rs"
-version = "0.2.12"
+version = "0.2.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76b4fdba731228694d50afea2ac546079e4e6796df56987558a2ce76bfc154b1"
+checksum = "58b60d2f354963da99356f25b218941276bd4c31d88a50dea58457f11c771581"
 dependencies = [
  "anyhow",
  "exp_backoff",
