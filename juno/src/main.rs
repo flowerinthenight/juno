@@ -122,14 +122,12 @@ fn main() -> Result<()> {
     thread::spawn(move || {
         loop {
             match rx_op.recv() {
+                Err(_) => continue,
                 Ok(v) => match v {
                     // This is our 'send' handler. When we are leader, we reply to all
                     // messages coming from other nodes using the send() API here.
                     Comms::ToLeader { msg, tx } => {
                         let msg_s = String::from_utf8(msg).unwrap();
-                        info!("[send()] received: {msg_s}");
-
-                        // Send our reply back using 'tx'.
                         let mut reply = String::new();
                         write!(&mut reply, "echo '{msg_s}' from leader:{}", id_handler.to_string()).unwrap();
                         tx.send(reply.as_bytes().to_vec()).unwrap();
@@ -138,19 +136,12 @@ fn main() -> Result<()> {
                     // through the broadcast() API, we reply here.
                     Comms::Broadcast { msg, tx } => {
                         let msg_s = String::from_utf8(msg).unwrap();
-                        info!("[broadcast()] received: {msg_s}");
-
-                        // Send our reply back using 'tx'.
                         let mut reply = String::new();
                         write!(&mut reply, "echo '{msg_s}' from {}", id_handler.to_string()).unwrap();
                         tx.send(reply.as_bytes().to_vec()).unwrap();
                     }
                     Comms::OnLeaderChange(state) => leader_clone.store(state, Ordering::Relaxed),
                 },
-                Err(e) => {
-                    error!("{e}");
-                    continue;
-                }
             }
         }
     });
