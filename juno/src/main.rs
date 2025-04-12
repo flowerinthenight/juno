@@ -292,6 +292,57 @@ fn main() -> Result<()> {
                                 let _ = stream.write_all(ack.as_bytes());
                             }
                             //
+                            // %<topic-name>\n
+                            //
+                            // Delete a topic. Deleting a topic also deletes all associated
+                            // subscriptions and messages.
+                            //
+                            "%" => {
+                                let start = Instant::now();
+
+                                defer! {
+                                    info!("[T{i}]: delete-topic took {:?}", start.elapsed());
+                                }
+
+                                let topic = &data[1..&data.len() - 1];
+                                let (tx_rt, rx_rt): (Sender<String>, Receiver<String>) = unbounded();
+                                rt.block_on(async {
+                                    let mut q = String::new();
+                                    write!(&mut q, "delete from {} ", TOPICS_TABLE).unwrap();
+                                    write!(&mut q, "where TopicName = '{}'", topic).unwrap();
+                                    let stmt = Statement::new(q);
+                                    let rwt = client.begin_read_write_transaction().await;
+                                    if let Err(e) = rwt {
+                                        let mut err = String::new();
+                                        write!(&mut err, "{e}").unwrap();
+                                        tx_rt.send(err).unwrap();
+                                        return;
+                                    }
+
+                                    let mut t = rwt.unwrap();
+                                    let res = t.update(stmt).await;
+                                    let res = t.end(res, None).await;
+                                    match res {
+                                        Ok(_) => tx_rt.send(String::new()).unwrap(),
+                                        Err(e) => {
+                                            let mut err = String::new();
+                                            write!(&mut err, "{e}").unwrap();
+                                            tx_rt.send(err).unwrap();
+                                        }
+                                    };
+                                });
+
+                                let res = rx_rt.recv().unwrap();
+                                let mut ack = String::new();
+                                if res.len() != 0 {
+                                    write!(&mut ack, "-{res}\n").unwrap();
+                                } else {
+                                    write!(&mut ack, "+OK\n").unwrap();
+                                }
+
+                                let _ = stream.write_all(ack.as_bytes());
+                            }
+                            //
                             // ^<topic-name> <subscription-name> <prop1=val1[ prop2=val2]...>\n
                             //
                             // Create a subscription. Name should start/end with a letter.
