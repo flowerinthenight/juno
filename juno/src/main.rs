@@ -1,11 +1,10 @@
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use clap::Parser;
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use ctrlc;
 use google_cloud_spanner::{
     client::{Client, ClientConfig},
     statement::Statement,
-    value::CommitTimestamp,
 };
 use hedge_rs::*;
 use log::*;
