@@ -468,6 +468,42 @@ fn main() -> Result<()> {
 
                                 let _ = stream.write_all(ack.as_bytes());
                             }
+                            //
+                            // *<subscription-name>\n
+                            //
+                            // Receive messages from a subscription.
+                            //
+                            "*" => {
+                                let start = Instant::now();
+
+                                defer! {
+                                    info!("[T{i}]: subscribe took {:?}", start.elapsed());
+                                }
+                            }
+                            //
+                            // @<message-id>\n
+                            //
+                            // Acknowledge a message.
+                            //
+                            "@" => {
+                                let start = Instant::now();
+
+                                defer! {
+                                    info!("[T{i}]: ack-message took {:?}", start.elapsed());
+                                }
+                            }
+                            //
+                            // #<subscription-name>\n
+                            //
+                            // Publish a message to a topic.
+                            //
+                            "#" => {
+                                let start = Instant::now();
+
+                                defer! {
+                                    info!("[T{i}]: publish-message took {:?}", start.elapsed());
+                                }
+                            }
                             _ => {}
                         }
                     }
