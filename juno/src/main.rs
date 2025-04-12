@@ -29,12 +29,23 @@ use tokio::runtime::Runtime;
 extern crate scopeguard;
 
 // CREATE TABLE zzz_topics (
-//     name STRING(MAX) NOT NULL,
-//     updated_at TIMESTAMP OPTIONS (
+//     TopicName STRING(MAX) NOT NULL,
+//     Updated TIMESTAMP OPTIONS (
 //         allow_commit_timestamp = true
 //     ),
-// ) PRIMARY KEY(name);
+// ) PRIMARY KEY(TopicName);
 static TOPICS_TABLE: &'static str = "zzz_topics";
+
+// CREATE TABLE zzz_subscriptions (
+//     TopicName STRING(MAX) NOT NULL,
+//     SubscriptionName STRING(MAX) NOT NULL,
+//     AcknowledgeTimeout INT64 NOT NULL DEFAULT 60,
+//     AutoExtend BOOL NOT NULL DEFAULT TRUE,
+//     Updated TIMESTAMP OPTIONS (
+//         allow_commit_timestamp = true
+//     ),
+// ) PRIMARY KEY(TopicName, SubscriptionName),
+// INTERLEAVE IN PARENT zzz_topics ON DELETE CASCADE;
 static SUBSCRIPTIONS_TABLE: &'static str = "zzz_subscriptions";
 static MESSAGES_TABLE: &'static str = "zzz_messages";
 
@@ -99,8 +110,9 @@ fn main() -> Result<()> {
         db_hedge = args.db.clone();
     }
 
-    let leader = Arc::new(AtomicUsize::new(0));
+    let leader = Arc::new(AtomicUsize::new(0)); // for leader state change callback
 
+    // Setup hedge-rs.Op as our memberlist manager.
     let op = Arc::new(Mutex::new(
         OpBuilder::new()
             .id(args.id.clone())
@@ -235,7 +247,7 @@ fn main() -> Result<()> {
                                 let re = Regex::new(r"^[a-zA-Z]+[a-zA-Z0-9-]+[a-zA-Z0-9]$").unwrap();
                                 if !re.is_match(topic) {
                                     let mut err = String::new();
-                                    write!(&mut err, "-Invalid format for the topic name\n").unwrap();
+                                    write!(&mut err, "-Invalid topic name\n").unwrap();
                                     let _ = stream.write_all(err.as_bytes());
                                     return;
                                 }
@@ -244,7 +256,7 @@ fn main() -> Result<()> {
                                 rt.block_on(async {
                                     let mut q = String::new();
                                     write!(&mut q, "insert {} ", TOPICS_TABLE).unwrap();
-                                    write!(&mut q, "(name, updated_at) ").unwrap();
+                                    write!(&mut q, "(TopicName, Updated) ").unwrap();
                                     write!(&mut q, "values ('{}', ", topic).unwrap();
                                     write!(&mut q, "PENDING_COMMIT_TIMESTAMP())").unwrap();
                                     let stmt = Statement::new(q);
@@ -287,8 +299,8 @@ fn main() -> Result<()> {
                             //
                             // Supported properties:
                             //
-                            //   visibilityTimeout=secs [default=60]
-                            //   autoExtend=bool [default=true]
+                            //   AcknowledgeTimeout=secs [default=60]
+                            //   AutoExtend=bool [default=true]
                             //
                             "^" => {
                                 let start = Instant::now();
@@ -297,21 +309,81 @@ fn main() -> Result<()> {
                                     info!("[T{i}]: create-subscription took {:?}", start.elapsed());
                                 }
 
-                                let topic = &data[1..&data.len() - 1];
-                                let re = Regex::new(r"^[a-zA-Z]+[a-zA-Z0-9-]+[a-zA-Z0-9]$").unwrap();
-                                if !re.is_match(topic) {
+                                let line = &data[1..&data.len() - 1];
+                                let vals: Vec<&str> = line.split(" ").collect();
+                                if vals.len() < 2 {
                                     let mut err = String::new();
-                                    write!(&mut err, "-Invalid format for the topic name\n").unwrap();
+                                    write!(&mut err, "-Invalid payload format\n").unwrap();
                                     let _ = stream.write_all(err.as_bytes());
                                     return;
+                                }
+
+                                let re = Regex::new(r"^[a-zA-Z]+[a-zA-Z0-9-]+[a-zA-Z0-9]$").unwrap();
+                                if !re.is_match(vals[0]) {
+                                    let mut err = String::new();
+                                    write!(&mut err, "-Invalid topic name\n").unwrap();
+                                    let _ = stream.write_all(err.as_bytes());
+                                    return;
+                                }
+
+                                if !re.is_match(vals[1]) {
+                                    let mut err = String::new();
+                                    write!(&mut err, "-Invalid subscription name\n").unwrap();
+                                    let _ = stream.write_all(err.as_bytes());
+                                    return;
+                                }
+
+                                let mut ack_timeout = 60;
+                                let mut auto_extend = true;
+                                for i in 2..vals.len() {
+                                    let prop = vals[i].split("=").collect::<Vec<&str>>();
+                                    if prop.len() != 2 {
+                                        let mut err = String::new();
+                                        write!(&mut err, "-Invalid property format\n").unwrap();
+                                        let _ = stream.write_all(err.as_bytes());
+                                        return;
+                                    }
+
+                                    match prop[0] {
+                                        "AcknowledgeTimeout" => {
+                                            let val = prop[1].parse::<i64>();
+                                            if val.is_err() {
+                                                let mut err = String::new();
+                                                write!(&mut err, "-Invalid AcknowledgeTimeout value\n").unwrap();
+                                                let _ = stream.write_all(err.as_bytes());
+                                                return;
+                                            }
+                                            ack_timeout = val.unwrap() as i64;
+                                        }
+                                        "AutoExtend" => {
+                                            let val = prop[1].parse::<bool>();
+                                            if val.is_err() {
+                                                let mut err = String::new();
+                                                write!(&mut err, "-Invalid AutoExtend value\n").unwrap();
+                                                let _ = stream.write_all(err.as_bytes());
+                                                return;
+                                            }
+                                            auto_extend = val.unwrap() as bool;
+                                        }
+                                        _ => {
+                                            let mut err = String::new();
+                                            write!(&mut err, "-Unknown property\n").unwrap();
+                                            let _ = stream.write_all(err.as_bytes());
+                                            return;
+                                        }
+                                    }
                                 }
 
                                 let (tx_rt, rx_rt): (Sender<String>, Receiver<String>) = unbounded();
                                 rt.block_on(async {
                                     let mut q = String::new();
-                                    write!(&mut q, "insert {} ", TOPICS_TABLE).unwrap();
-                                    write!(&mut q, "(name, updated_at) ").unwrap();
-                                    write!(&mut q, "values ('{}', ", topic).unwrap();
+                                    write!(&mut q, "insert {} ", SUBSCRIPTIONS_TABLE).unwrap();
+                                    write!(&mut q, "(TopicName, SubscriptionName, ").unwrap();
+                                    write!(&mut q, "AcknowledgeTimeout, AutoExtend, Updated) ").unwrap();
+                                    write!(&mut q, "values ('{}', ", vals[0]).unwrap();
+                                    write!(&mut q, "'{}', ", vals[1]).unwrap();
+                                    write!(&mut q, "{}, ", ack_timeout).unwrap();
+                                    write!(&mut q, "{}, ", auto_extend).unwrap();
                                     write!(&mut q, "PENDING_COMMIT_TIMESTAMP())").unwrap();
                                     let stmt = Statement::new(q);
                                     let rwt = client.begin_read_write_transaction().await;
