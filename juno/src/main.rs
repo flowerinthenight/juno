@@ -215,14 +215,8 @@ fn main() -> Result<()> {
                             // Hyphens are allowed in between.
                             //
                             "&" => {
-                                let start = Instant::now();
-
-                                defer! {
-                                    info!("[T{i}]: api_create_topic took {:?}", start.elapsed());
-                                }
-
                                 let topic = &data[1..&data.len() - 1];
-                                let _ = api_create_topic(&rt, stream, &client, topic);
+                                let _ = api_create_topic(i, &rt, stream, &client, topic);
                             }
                             //
                             // %<topic-name>\n
@@ -231,14 +225,8 @@ fn main() -> Result<()> {
                             // subscriptions and messages.
                             //
                             "%" => {
-                                let start = Instant::now();
-
-                                defer! {
-                                    info!("[T{i}]: api_delete_topic took {:?}", start.elapsed());
-                                }
-
                                 let topic = &data[1..&data.len() - 1];
-                                let _ = api_delete_topic(&rt, stream, &client, topic);
+                                let _ = api_delete_topic(i, &rt, stream, &client, topic);
                             }
                             //
                             // ^<topic-name> <subscription-name> <prop1=val1[ prop2=val2]...>\n
@@ -252,14 +240,8 @@ fn main() -> Result<()> {
                             //   AutoExtend=bool [default=true]
                             //
                             "^" => {
-                                let start = Instant::now();
-
-                                defer! {
-                                    info!("[T{i}]: api_create_sub took {:?}", start.elapsed());
-                                }
-
                                 let line = &data[1..&data.len() - 1];
-                                let _ = api_create_sub(&rt, stream, &client, line);
+                                let _ = api_create_sub(i, &rt, stream, &client, line);
                             }
                             //
                             // !<subscription-name>\n
@@ -267,14 +249,8 @@ fn main() -> Result<()> {
                             // Delete a subscription.
                             //
                             "!" => {
-                                let start = Instant::now();
-
-                                defer! {
-                                    info!("[T{i}]: api_delete_sub took {:?}", start.elapsed());
-                                }
-
                                 let sub = &data[1..&data.len() - 1];
-                                let _ = api_delete_sub(&rt, stream, &client, sub);
+                                let _ = api_delete_sub(i, &rt, stream, &client, sub);
                             }
                             //
                             // *<subscription-name>\n
@@ -306,14 +282,8 @@ fn main() -> Result<()> {
                             // Publish a message to a topic.
                             //
                             "#" => {
-                                let start = Instant::now();
-
-                                defer! {
-                                    info!("[T{i}]: api_publish_msg took {:?}", start.elapsed());
-                                }
-
                                 let line = &data[1..&data.len() - 1];
-                                if let Ok(bc) = api_publish_msg(&rt, stream, &client, line) {
+                                if let Ok(bc) = api_publish_msg(i, &rt, stream, &client, line) {
                                     if bc {
                                         // Broadcast the message, as is, to all nodes.
                                         let _ = broadcast_publish_msg(&op_clone, line);

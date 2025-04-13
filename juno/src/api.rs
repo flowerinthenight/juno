@@ -2,12 +2,14 @@ use anyhow::Result;
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use google_cloud_spanner::{client::Client, statement::Statement};
 use hedge_rs::*;
+use log::*;
 use regex::Regex;
 use std::{
     fmt::Write as _,
     io::prelude::*,
     net::TcpStream,
     sync::{Arc, Mutex, mpsc},
+    time::Instant,
 };
 use tokio::runtime::Runtime;
 use uuid::Uuid;
@@ -16,7 +18,13 @@ static TOPICS_TABLE: &'static str = "juno_topics";
 static SUBSCRIPTIONS_TABLE: &'static str = "juno_subscriptions";
 static MESSAGES_TABLE: &'static str = "juno_messages";
 
-pub fn api_create_topic(rt: &Runtime, mut stream: TcpStream, client: &Client, topic: &str) -> Result<()> {
+pub fn api_create_topic(i: usize, rt: &Runtime, mut stream: TcpStream, client: &Client, topic: &str) -> Result<()> {
+    let start = Instant::now();
+
+    defer! {
+        info!("[T{i}]: api_create_topic took {:?}", start.elapsed());
+    }
+
     let re = Regex::new(r"^[a-zA-Z]+[a-zA-Z0-9-]+[a-zA-Z0-9]$")?;
     if !re.is_match(topic) {
         let mut err = String::new();
@@ -68,7 +76,13 @@ pub fn api_create_topic(rt: &Runtime, mut stream: TcpStream, client: &Client, to
     Ok(())
 }
 
-pub fn api_delete_topic(rt: &Runtime, mut stream: TcpStream, client: &Client, topic: &str) -> Result<()> {
+pub fn api_delete_topic(i: usize, rt: &Runtime, mut stream: TcpStream, client: &Client, topic: &str) -> Result<()> {
+    let start = Instant::now();
+
+    defer! {
+        info!("[T{i}]: api_delete_topic took {:?}", start.elapsed());
+    }
+
     let (tx_rt, rx_rt): (Sender<String>, Receiver<String>) = unbounded();
     rt.block_on(async {
         let mut q = String::new();
@@ -109,7 +123,13 @@ pub fn api_delete_topic(rt: &Runtime, mut stream: TcpStream, client: &Client, to
     Ok(())
 }
 
-pub fn api_create_sub(rt: &Runtime, mut stream: TcpStream, client: &Client, line: &str) -> Result<()> {
+pub fn api_create_sub(i: usize, rt: &Runtime, mut stream: TcpStream, client: &Client, line: &str) -> Result<()> {
+    let start = Instant::now();
+
+    defer! {
+        info!("[T{i}]: api_create_sub took {:?}", start.elapsed());
+    }
+
     let vals: Vec<&str> = line.split(" ").collect();
     if vals.len() < 2 {
         let mut err = String::new();
@@ -221,7 +241,13 @@ pub fn api_create_sub(rt: &Runtime, mut stream: TcpStream, client: &Client, line
     Ok(())
 }
 
-pub fn api_delete_sub(rt: &Runtime, mut stream: TcpStream, client: &Client, sub: &str) -> Result<()> {
+pub fn api_delete_sub(i: usize, rt: &Runtime, mut stream: TcpStream, client: &Client, sub: &str) -> Result<()> {
+    let start = Instant::now();
+
+    defer! {
+        info!("[T{i}]: api_delete_sub took {:?}", start.elapsed());
+    }
+
     let (tx_rt, rx_rt): (Sender<String>, Receiver<String>) = unbounded();
     rt.block_on(async {
         let mut q = String::new();
@@ -262,7 +288,13 @@ pub fn api_delete_sub(rt: &Runtime, mut stream: TcpStream, client: &Client, sub:
     Ok(())
 }
 
-pub fn api_publish_msg(rt: &Runtime, mut stream: TcpStream, client: &Client, line: &str) -> Result<bool> {
+pub fn api_publish_msg(i: usize, rt: &Runtime, mut stream: TcpStream, client: &Client, line: &str) -> Result<bool> {
+    let start = Instant::now();
+
+    defer! {
+        info!("[T{i}]: api_publish_msg took {:?}", start.elapsed());
+    }
+
     let vals: Vec<&str> = line.split(" ").collect();
     if vals.len() < 2 {
         let mut err = String::new();
