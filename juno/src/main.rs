@@ -1,5 +1,4 @@
 use anyhow::Result;
-use base64ct::{Base64, Encoding};
 use clap::Parser;
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use ctrlc;
@@ -539,15 +538,22 @@ fn main() -> Result<()> {
                                     };
                                 });
 
+                                let mut broadcast = true;
                                 let res = rx_rt.recv().unwrap();
                                 let mut ack = String::new();
                                 if res.len() != 0 {
                                     write!(&mut ack, "-{res}\n").unwrap();
+                                    broadcast = false;
                                 } else {
                                     write!(&mut ack, "+{msg_id}\n").unwrap();
                                 }
 
                                 let _ = stream.write_all(ack.as_bytes());
+                                if !broadcast {
+                                    return;
+                                }
+
+                                // TODO: send message to all nodes
                             }
                             _ => {}
                         }
