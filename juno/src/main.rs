@@ -499,6 +499,7 @@ fn main() -> Result<()> {
                                     return;
                                 }
 
+                                let msg_id = Uuid::new_v4().to_string();
                                 let mut attrs = String::new();
                                 if vals.len() > 2 {
                                     write!(&mut attrs, "{}", vals[2]).unwrap();
@@ -511,7 +512,7 @@ fn main() -> Result<()> {
                                     write!(&mut q, "(TopicName, Id, Payload, ").unwrap();
                                     write!(&mut q, "Attributes, Created, Updated) ").unwrap();
                                     write!(&mut q, "values ('{}', ", vals[0]).unwrap();
-                                    write!(&mut q, "'{}', ", Uuid::new_v4().to_string()).unwrap();
+                                    write!(&mut q, "'{}', ", msg_id).unwrap();
                                     write!(&mut q, "'{}', ", vals[1]).unwrap();
                                     write!(&mut q, "'{}', ", attrs).unwrap();
                                     write!(&mut q, "PENDING_COMMIT_TIMESTAMP(), ").unwrap();
@@ -543,7 +544,7 @@ fn main() -> Result<()> {
                                 if res.len() != 0 {
                                     write!(&mut ack, "-{res}\n").unwrap();
                                 } else {
-                                    write!(&mut ack, "+OK\n").unwrap();
+                                    write!(&mut ack, "+{msg_id}\n").unwrap();
                                 }
 
                                 let _ = stream.write_all(ack.as_bytes());
