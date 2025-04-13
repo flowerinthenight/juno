@@ -18,6 +18,7 @@ uuid = { version = "1.16.0", features = ["v4"] }
 crossbeam-channel = "0.5.15"
 num_cpus = "1.16.0"
 regex = "1.11.1"
+base64ct = { version = "1.7.3", features = ["alloc"] }
 # We don't depend on rustls, but it's panicking without this.
 # https://github.com/rustls/rustls/issues/1938
 rustls = { version = "0.23.26", default-features = false, features = [

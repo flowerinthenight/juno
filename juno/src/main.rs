@@ -1,4 +1,5 @@
 use anyhow::Result;
+use base64ct::{Base64, Encoding};
 use clap::Parser;
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use ctrlc;
@@ -478,7 +479,7 @@ fn main() -> Result<()> {
                                 }
                             }
                             //
-                            // #<subscription-name>\n
+                            // #<topic-name> <base64(msg) base64(attrs)>\n
                             //
                             // Publish a message to a topic.
                             //
@@ -488,6 +489,64 @@ fn main() -> Result<()> {
                                 defer! {
                                     info!("[T{i}]: publish-message took {:?}", start.elapsed());
                                 }
+
+                                let line = &data[1..&data.len() - 1];
+                                let vals: Vec<&str> = line.split(" ").collect();
+                                if vals.len() < 2 {
+                                    let mut err = String::new();
+                                    write!(&mut err, "-Invalid payload format\n").unwrap();
+                                    let _ = stream.write_all(err.as_bytes());
+                                    return;
+                                }
+
+                                let mut attrs = String::new();
+                                if vals.len() > 2 {
+                                    write!(&mut attrs, "{}", vals[2]).unwrap();
+                                }
+
+                                let (tx_rt, rx_rt): (Sender<String>, Receiver<String>) = unbounded();
+                                rt.block_on(async {
+                                    let mut q = String::new();
+                                    write!(&mut q, "insert {} ", MESSAGES_TABLE).unwrap();
+                                    write!(&mut q, "(TopicName, Id, Payload, ").unwrap();
+                                    write!(&mut q, "Attributes, Created, Updated) ").unwrap();
+                                    write!(&mut q, "values ('{}', ", vals[0]).unwrap();
+                                    write!(&mut q, "'{}', ", Uuid::new_v4().to_string()).unwrap();
+                                    write!(&mut q, "'{}', ", vals[1]).unwrap();
+                                    write!(&mut q, "'{}', ", attrs).unwrap();
+                                    write!(&mut q, "PENDING_COMMIT_TIMESTAMP(), ").unwrap();
+                                    write!(&mut q, "PENDING_COMMIT_TIMESTAMP())").unwrap();
+                                    let stmt = Statement::new(q);
+                                    let rwt = client.begin_read_write_transaction().await;
+                                    if let Err(e) = rwt {
+                                        let mut err = String::new();
+                                        write!(&mut err, "{e}").unwrap();
+                                        tx_rt.send(err).unwrap();
+                                        return;
+                                    }
+
+                                    let mut t = rwt.unwrap();
+                                    let res = t.update(stmt).await;
+                                    let res = t.end(res, None).await;
+                                    match res {
+                                        Ok(_) => tx_rt.send(String::new()).unwrap(),
+                                        Err(e) => {
+                                            let mut err = String::new();
+                                            write!(&mut err, "{e}").unwrap();
+                                            tx_rt.send(err).unwrap();
+                                        }
+                                    };
+                                });
+
+                                let res = rx_rt.recv().unwrap();
+                                let mut ack = String::new();
+                                if res.len() != 0 {
+                                    write!(&mut ack, "-{res}\n").unwrap();
+                                } else {
+                                    write!(&mut ack, "+OK\n").unwrap();
+                                }
+
+                                let _ = stream.write_all(ack.as_bytes());
                             }
                             _ => {}
                         }
