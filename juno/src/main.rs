@@ -117,8 +117,6 @@ fn main() -> Result<()> {
             match rx_op.recv() {
                 Err(_) => continue,
                 Ok(v) => match v {
-                    // This is our 'send' handler. When we are leader, we reply to all
-                    // messages coming from other nodes using the send() API here.
                     Comms::ToLeader { msg, tx } => {
                         let _ = handle_toleader(id_handler.clone(), msg, tx);
                     }
