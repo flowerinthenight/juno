@@ -28,46 +28,8 @@ use uuid::Uuid;
 #[macro_use(defer)]
 extern crate scopeguard;
 
-// CREATE TABLE zzz_topics (
-//     TopicName STRING(MAX) NOT NULL,
-//     Created TIMESTAMP OPTIONS (
-//         allow_commit_timestamp = true
-//     ),
-//     Updated TIMESTAMP OPTIONS (
-//         allow_commit_timestamp = true
-//     ),
-// ) PRIMARY KEY(TopicName);
 static TOPICS_TABLE: &'static str = "zzz_topics";
-
-// CREATE TABLE zzz_subscriptions (
-//     TopicName STRING(MAX) NOT NULL,
-//     SubscriptionName STRING(MAX) NOT NULL,
-//     AcknowledgeTimeout INT64 NOT NULL DEFAULT (60),
-//     AutoExtend BOOL NOT NULL DEFAULT (TRUE),
-//     Created TIMESTAMP OPTIONS (
-//         allow_commit_timestamp = true
-//     ),
-//     Updated TIMESTAMP OPTIONS (
-//         allow_commit_timestamp = true
-//     ),
-// ) PRIMARY KEY(TopicName, SubscriptionName),
-// INTERLEAVE IN PARENT zzz_topics ON DELETE CASCADE;
 static SUBSCRIPTIONS_TABLE: &'static str = "zzz_subscriptions";
-
-// CREATE TABLE zzz_messages (
-//     TopicName STRING(MAX) NOT NULL,
-//     Id STRING(MAX) NOT NULL,
-//     Payload STRING(MAX),
-//     Attributes STRING(MAX),
-//     Acknowledged BOOL NOT NULL DEFAULT (FALSE),
-//     Created TIMESTAMP OPTIONS (
-//         allow_commit_timestamp = true
-//     ),
-//     Updated TIMESTAMP OPTIONS (
-//         allow_commit_timestamp = true
-//     ),
-// ) PRIMARY KEY(TopicName, Id),
-// INTERLEAVE IN PARENT zzz_topics ON DELETE CASCADE;
 static MESSAGES_TABLE: &'static str = "zzz_messages";
 
 /// Simple PubSub system using Cloud Spanner as backing storage.
