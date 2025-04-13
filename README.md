@@ -2,7 +2,7 @@
 
 ```sql
 -- Create the topics table:
-CREATE TABLE topics (
+CREATE TABLE juno_topics (
     TopicName STRING(MAX) NOT NULL,
     Created TIMESTAMP OPTIONS (
         allow_commit_timestamp = true
@@ -13,7 +13,7 @@ CREATE TABLE topics (
 ) PRIMARY KEY(TopicName);
 
 -- Create the subscriptions table:
-CREATE TABLE subscriptions (
+CREATE TABLE juno_subscriptions (
     TopicName STRING(MAX) NOT NULL,
     SubscriptionName STRING(MAX) NOT NULL,
     AcknowledgeTimeout INT64 NOT NULL DEFAULT (60),
@@ -25,10 +25,10 @@ CREATE TABLE subscriptions (
         allow_commit_timestamp = true
     ),
 ) PRIMARY KEY(TopicName, SubscriptionName),
-INTERLEAVE IN PARENT topics ON DELETE CASCADE;
+INTERLEAVE IN PARENT juno_topics ON DELETE CASCADE;
 
 -- Create the messages table:
-CREATE TABLE messages (
+CREATE TABLE juno_messages (
     TopicName STRING(MAX) NOT NULL,
     Id STRING(MAX) NOT NULL,
     Payload STRING(MAX),
@@ -41,5 +41,5 @@ CREATE TABLE messages (
         allow_commit_timestamp = true
     ),
 ) PRIMARY KEY(TopicName, Id),
-INTERLEAVE IN PARENT topics ON DELETE CASCADE;
+INTERLEAVE IN PARENT juno_topics ON DELETE CASCADE;
 ```
