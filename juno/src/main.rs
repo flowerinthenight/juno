@@ -158,6 +158,7 @@ fn main() -> Result<()> {
     for i in 0..cpus {
         let rxc = rxh.clone();
         let db_clone = args.db.clone();
+        let op_clone = op.clone();
         thread::spawn(move || {
             let rt = Runtime::new().unwrap();
             let (tx, rx): (Sender<Option<Client>>, Receiver<Option<Client>>) = unbounded();
@@ -553,7 +554,7 @@ fn main() -> Result<()> {
                                     return;
                                 }
 
-                                // TODO: send message to all nodes
+                                let _ = broadcast_publish_msg(&op_clone, line);
                             }
                             _ => {}
                         }
@@ -584,6 +585,27 @@ fn main() -> Result<()> {
 
     rx_ctrlc.recv()?; // wait for Ctrl-C
     op.lock().unwrap().close();
+
+    Ok(())
+}
+
+fn broadcast_publish_msg(op: &Arc<Mutex<Op>>, msg: &str) -> Result<()> {
+    let (tx, rx): (mpsc::Sender<Broadcast>, mpsc::Receiver<Broadcast>) = mpsc::channel();
+
+    {
+        op.lock().unwrap().broadcast(msg.as_bytes().to_vec(), tx)?;
+    }
+
+    // Best-effort basis only; do nothing with the replies.
+    loop {
+        match rx.recv().unwrap() {
+            Broadcast::ReplyStream { id, msg, error: _ } => {
+                if id == "" || msg.len() == 0 {
+                    break;
+                }
+            }
+        }
+    }
 
     Ok(())
 }
