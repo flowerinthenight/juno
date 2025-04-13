@@ -23,12 +23,16 @@ use std::{
     time::Instant,
 };
 use tokio::runtime::Runtime;
+use uuid::Uuid;
 
 #[macro_use(defer)]
 extern crate scopeguard;
 
 // CREATE TABLE zzz_topics (
 //     TopicName STRING(MAX) NOT NULL,
+//     Created TIMESTAMP OPTIONS (
+//         allow_commit_timestamp = true
+//     ),
 //     Updated TIMESTAMP OPTIONS (
 //         allow_commit_timestamp = true
 //     ),
@@ -38,14 +42,32 @@ static TOPICS_TABLE: &'static str = "zzz_topics";
 // CREATE TABLE zzz_subscriptions (
 //     TopicName STRING(MAX) NOT NULL,
 //     SubscriptionName STRING(MAX) NOT NULL,
-//     AcknowledgeTimeout INT64 NOT NULL DEFAULT 60,
-//     AutoExtend BOOL NOT NULL DEFAULT TRUE,
+//     AcknowledgeTimeout INT64 NOT NULL DEFAULT (60),
+//     AutoExtend BOOL NOT NULL DEFAULT (TRUE),
+//     Created TIMESTAMP OPTIONS (
+//         allow_commit_timestamp = true
+//     ),
 //     Updated TIMESTAMP OPTIONS (
 //         allow_commit_timestamp = true
 //     ),
 // ) PRIMARY KEY(TopicName, SubscriptionName),
 // INTERLEAVE IN PARENT zzz_topics ON DELETE CASCADE;
 static SUBSCRIPTIONS_TABLE: &'static str = "zzz_subscriptions";
+
+// CREATE TABLE zzz_messages (
+//     TopicName STRING(MAX) NOT NULL,
+//     Id STRING(MAX) NOT NULL,
+//     Payload STRING(MAX),
+//     Attributes STRING(MAX),
+//     Acknowledged BOOL NOT NULL DEFAULT (FALSE),
+//     Created TIMESTAMP OPTIONS (
+//         allow_commit_timestamp = true
+//     ),
+//     Updated TIMESTAMP OPTIONS (
+//         allow_commit_timestamp = true
+//     ),
+// ) PRIMARY KEY(TopicName, Id),
+// INTERLEAVE IN PARENT zzz_topics ON DELETE CASCADE;
 static MESSAGES_TABLE: &'static str = "zzz_messages";
 
 /// Simple PubSub system using Cloud Spanner as backing storage.
@@ -255,8 +277,9 @@ fn main() -> Result<()> {
                                 rt.block_on(async {
                                     let mut q = String::new();
                                     write!(&mut q, "insert {} ", TOPICS_TABLE).unwrap();
-                                    write!(&mut q, "(TopicName, Updated) ").unwrap();
+                                    write!(&mut q, "(TopicName, Created, Updated) ").unwrap();
                                     write!(&mut q, "values ('{}', ", topic).unwrap();
+                                    write!(&mut q, "PENDING_COMMIT_TIMESTAMP(), ").unwrap();
                                     write!(&mut q, "PENDING_COMMIT_TIMESTAMP())").unwrap();
                                     let stmt = Statement::new(q);
                                     let rwt = client.begin_read_write_transaction().await;
@@ -429,11 +452,12 @@ fn main() -> Result<()> {
                                     let mut q = String::new();
                                     write!(&mut q, "insert {} ", SUBSCRIPTIONS_TABLE).unwrap();
                                     write!(&mut q, "(TopicName, SubscriptionName, ").unwrap();
-                                    write!(&mut q, "AcknowledgeTimeout, AutoExtend, Updated) ").unwrap();
+                                    write!(&mut q, "AcknowledgeTimeout, AutoExtend, Created, Updated) ").unwrap();
                                     write!(&mut q, "values ('{}', ", vals[0]).unwrap();
                                     write!(&mut q, "'{}', ", vals[1]).unwrap();
                                     write!(&mut q, "{}, ", ack_timeout).unwrap();
                                     write!(&mut q, "{}, ", auto_extend).unwrap();
+                                    write!(&mut q, "PENDING_COMMIT_TIMESTAMP(), ").unwrap();
                                     write!(&mut q, "PENDING_COMMIT_TIMESTAMP())").unwrap();
                                     let stmt = Statement::new(q);
                                     let rwt = client.begin_read_write_transaction().await;
