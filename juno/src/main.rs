@@ -1,13 +1,17 @@
 mod api;
+mod broadcast;
+mod send;
 
 use anyhow::Result;
 use api::*;
+use broadcast::*;
 use clap::Parser;
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use ctrlc;
 use google_cloud_spanner::client::{Client, ClientConfig};
 use hedge_rs::*;
 use log::*;
+use send::*;
 use std::{
     collections::HashMap,
     fmt::Write as _,
@@ -116,20 +120,14 @@ fn main() -> Result<()> {
                     // This is our 'send' handler. When we are leader, we reply to all
                     // messages coming from other nodes using the send() API here.
                     Comms::ToLeader { msg, tx } => {
-                        let msg_s = String::from_utf8(msg).unwrap();
-                        let mut reply = String::new();
-                        write!(&mut reply, "echo '{msg_s}' from leader:{}", id_handler.to_string()).unwrap();
-                        tx.send(reply.as_bytes().to_vec()).unwrap();
+                        let _ = handle_toleader(id_handler.clone(), msg, tx);
                     }
-                    // This is our 'broadcast' handler. When a node broadcasts a message,
-                    // through the broadcast() API, we reply here.
                     Comms::Broadcast { msg, tx } => {
-                        let msg_s = String::from_utf8(msg).unwrap();
-                        let mut reply = String::new();
-                        write!(&mut reply, "echo '{msg_s}' from {}", id_handler.to_string()).unwrap();
-                        tx.send(reply.as_bytes().to_vec()).unwrap();
+                        let _ = handle_broadcast(id_handler.clone(), msg, tx);
                     }
-                    Comms::OnLeaderChange(state) => leader_clone.store(state, Ordering::Relaxed),
+                    Comms::OnLeaderChange(state) => {
+                        leader_clone.store(state, Ordering::Relaxed);
+                    }
                 },
             }
         }
@@ -285,7 +283,6 @@ fn main() -> Result<()> {
                                 let line = &data[1..&data.len() - 1];
                                 if let Ok(bc) = api_publish_msg(i, &rt, stream, &client, line) {
                                     if bc {
-                                        // Broadcast the message, as is, to all nodes.
                                         let _ = broadcast_publish_msg(&op_clone, line);
                                     }
                                 }
