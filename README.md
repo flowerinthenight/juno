@@ -25,7 +25,7 @@ CREATE TABLE subscriptions (
         allow_commit_timestamp = true
     ),
 ) PRIMARY KEY(TopicName, SubscriptionName),
-INTERLEAVE IN PARENT zzz_topics ON DELETE CASCADE;
+INTERLEAVE IN PARENT topics ON DELETE CASCADE;
 
 -- Create the messages table:
 CREATE TABLE messages (
@@ -41,5 +41,5 @@ CREATE TABLE messages (
         allow_commit_timestamp = true
     ),
 ) PRIMARY KEY(TopicName, Id),
-INTERLEAVE IN PARENT zzz_topics ON DELETE CASCADE;
+INTERLEAVE IN PARENT topics ON DELETE CASCADE;
 ```
