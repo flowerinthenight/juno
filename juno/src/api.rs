@@ -12,9 +12,9 @@ use std::{
 use tokio::runtime::Runtime;
 use uuid::Uuid;
 
-static TOPICS_TABLE: &'static str = "zzz_topics";
-static SUBSCRIPTIONS_TABLE: &'static str = "zzz_subscriptions";
-static MESSAGES_TABLE: &'static str = "zzz_messages";
+static TOPICS_TABLE: &'static str = "juno_topics";
+static SUBSCRIPTIONS_TABLE: &'static str = "juno_subscriptions";
+static MESSAGES_TABLE: &'static str = "juno_messages";
 
 pub fn api_create_topic(rt: &Runtime, mut stream: TcpStream, client: &Client, topic: &str) -> Result<()> {
     let re = Regex::new(r"^[a-zA-Z]+[a-zA-Z0-9-]+[a-zA-Z0-9]$")?;
