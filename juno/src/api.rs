@@ -221,6 +221,47 @@ pub fn api_create_sub(rt: &Runtime, mut stream: TcpStream, client: &Client, line
     Ok(())
 }
 
+pub fn api_delete_sub(rt: &Runtime, mut stream: TcpStream, client: &Client, sub: &str) -> Result<()> {
+    let (tx_rt, rx_rt): (Sender<String>, Receiver<String>) = unbounded();
+    rt.block_on(async {
+        let mut q = String::new();
+        write!(&mut q, "delete from {} ", SUBSCRIPTIONS_TABLE).unwrap();
+        write!(&mut q, "where SubscriptionName = '{}'", sub).unwrap();
+        let stmt = Statement::new(q);
+        let rwt = client.begin_read_write_transaction().await;
+        if let Err(e) = rwt {
+            let mut err = String::new();
+            write!(&mut err, "{e}").unwrap();
+            tx_rt.send(err).unwrap();
+            return;
+        }
+
+        let mut t = rwt.unwrap();
+        let res = t.update(stmt).await;
+        let res = t.end(res, None).await;
+        match res {
+            Ok(_) => tx_rt.send(String::new()).unwrap(),
+            Err(e) => {
+                let mut err = String::new();
+                write!(&mut err, "{e}").unwrap();
+                tx_rt.send(err).unwrap();
+            }
+        };
+    });
+
+    let res = rx_rt.recv()?;
+    let mut ack = String::new();
+    if res.len() != 0 {
+        write!(&mut ack, "-{res}\n")?;
+    } else {
+        write!(&mut ack, "+OK\n")?;
+    }
+
+    let _ = stream.write_all(ack.as_bytes());
+
+    Ok(())
+}
+
 pub fn api_publish_msg(rt: &Runtime, mut stream: TcpStream, client: &Client, line: &str) -> Result<bool> {
     let vals: Vec<&str> = line.split(" ").collect();
     if vals.len() < 2 {

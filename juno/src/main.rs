@@ -262,6 +262,21 @@ fn main() -> Result<()> {
                                 let _ = api_create_sub(&rt, stream, &client, line);
                             }
                             //
+                            // !<subscription-name>\n
+                            //
+                            // Delete a subscription.
+                            //
+                            "!" => {
+                                let start = Instant::now();
+
+                                defer! {
+                                    info!("[T{i}]: api_delete_sub took {:?}", start.elapsed());
+                                }
+
+                                let sub = &data[1..&data.len() - 1];
+                                let _ = api_delete_sub(&rt, stream, &client, sub);
+                            }
+                            //
                             // *<subscription-name>\n
                             //
                             // Receive messages from a subscription.
