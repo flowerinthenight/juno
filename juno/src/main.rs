@@ -111,17 +111,16 @@ fn main() -> Result<()> {
 
     // Start a new thread that will serve as handlers for both send() and broadcast() APIs.
     let leader_clone = leader.clone();
-    let id_handler = args.id.clone();
     thread::spawn(move || {
         loop {
             match rx_op.recv() {
                 Err(_) => continue,
                 Ok(v) => match v {
                     Comms::ToLeader { msg, tx } => {
-                        let _ = handle_toleader(id_handler.clone(), msg, tx);
+                        let _ = handle_toleader(&args.id, msg, tx);
                     }
                     Comms::Broadcast { msg, tx } => {
-                        let _ = handle_broadcast(id_handler.clone(), msg, tx);
+                        let _ = handle_broadcast(&args.id, msg, tx);
                     }
                     Comms::OnLeaderChange(state) => {
                         leader_clone.store(state, Ordering::Relaxed);
@@ -313,7 +312,10 @@ fn main() -> Result<()> {
     });
 
     rx_ctrlc.recv()?; // wait for Ctrl-C
-    op.lock().unwrap().close();
+
+    {
+        op.lock().unwrap().close();
+    }
 
     Ok(())
 }
