@@ -48,7 +48,7 @@ struct Args {
     db: String,
 
     /// Spanner database for hedge-rs (same with `--db` if not set)
-    #[arg(long, long, default_value = "*")]
+    #[arg(long, long, default_value = "--db")]
     db_hedge: String,
 
     /// Spanner table (for hedge-rs)
@@ -87,9 +87,14 @@ fn main() -> Result<()> {
     let (tx_op, rx_op): (mpsc::Sender<Comms>, mpsc::Receiver<Comms>) = mpsc::channel();
 
     let mut db_hedge = String::new();
-    if args.db_hedge == "*" {
+    if args.db_hedge == "--db" {
         db_hedge = args.db.clone();
     }
+
+    info!(
+        "starting node:{}, api={}, db={}, db-hedge={}, table={}, lockname={}",
+        &args.id, &args.api, &args.db, &db_hedge, &args.table, &args.name
+    );
 
     let leader = Arc::new(AtomicUsize::new(0)); // for leader state change callback
 
@@ -295,9 +300,8 @@ fn main() -> Result<()> {
 
     // Starts a new thread for the API.
     let tx_api = tx_work.clone();
-    let hp_api = args.api.clone();
     thread::spawn(move || {
-        let listen = TcpListener::bind(hp_api.to_string()).unwrap();
+        let listen = TcpListener::bind(&args.api).unwrap();
         for stream in listen.incoming() {
             let stream = match stream {
                 Ok(v) => v,
