@@ -75,6 +75,23 @@ enum WorkerCtrl {
     },
 }
 
+struct Subscription {
+    name: String,
+    ack_timeout: i64,
+    auto_extend: bool,
+}
+
+struct Message {
+    id: String,
+    data: String,
+    attrs: String,
+}
+
+struct Meta {
+    subs: Vec<Subscription>,
+    msgs: Vec<Message>,
+}
+
 fn main() -> Result<()> {
     env_logger::init();
     let args = Args::parse();
@@ -95,6 +112,9 @@ fn main() -> Result<()> {
         "starting node:{}, api={}, db={}, db-hedge={}, table={}, lockname={}",
         &args.id, &args.api, &args.db, &db_hedge, &args.table, &args.name
     );
+
+    // Key is topic name, value is metadata for the associated subscriptions and messages.
+    let tm: Arc<Mutex<HashMap<String, Arc<Mutex<Meta>>>>> = Arc::new(Mutex::new(HashMap::new()));
 
     let leader = Arc::new(AtomicUsize::new(0)); // for leader state change callback
 
@@ -122,10 +142,10 @@ fn main() -> Result<()> {
                 Err(_) => continue,
                 Ok(v) => match v {
                     Comms::ToLeader { msg, tx } => {
-                        let _ = handle_toleader(&args.id, msg, tx);
+                        let _ = handle_toleader(&args.id, msg, tx, &tm, &leader_clone);
                     }
                     Comms::Broadcast { msg, tx } => {
-                        let _ = handle_broadcast(&args.id, msg, tx);
+                        let _ = handle_broadcast(&args.id, msg, tx, &tm, &leader_clone);
                     }
                     Comms::OnLeaderChange(state) => {
                         leader_clone.store(state, Ordering::Relaxed);
