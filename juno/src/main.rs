@@ -9,7 +9,6 @@ use clap::Parser;
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use ctrlc;
 use google_cloud_spanner::{
-    bigdecimal::num_traits::float,
     client::{Client, ClientConfig},
     statement::Statement,
 };
@@ -168,13 +167,20 @@ fn main() -> Result<()> {
         }
     }
 
+    // We use a single Tokio runtime.
+    let a_rt = Arc::new(Runtime::new()?);
+    let mut v_rt = vec![];
+    for _ in 0..cpus {
+        v_rt.push(a_rt.clone());
+    }
+
     // Start our API worker threads.
-    for i in 0..cpus {
+    for i in 0..v_rt.len() {
         let rxc = rxh.clone();
         let db_clone = args.db.clone();
         let op_clone = op.clone();
+        let rt = v_rt[i].clone();
         thread::spawn(move || {
-            let rt = Runtime::new().unwrap();
             let (tx, rx): (Sender<Option<Client>>, Receiver<Option<Client>>) = unbounded();
             rt.block_on(async {
                 let config = ClientConfig::default().with_auth().await;
