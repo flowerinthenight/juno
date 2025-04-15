@@ -12,9 +12,12 @@ pub fn handle_broadcast(
     node_id: &str,
     msg: Vec<u8>,
     tx: mpsc::Sender<Vec<u8>>,
-    _tm: &Arc<Mutex<HashMap<String, Arc<Mutex<Meta>>>>>,
+    tm: &Arc<Mutex<HashMap<String, Arc<Mutex<Meta>>>>>,
     _leader: &Arc<AtomicUsize>,
 ) -> Result<()> {
+    let tm = tm.clone();
+    _ = tm;
+
     let msg_s = String::from_utf8(msg)?;
     let mut reply = String::new();
     write!(&mut reply, "echo '{msg_s}' from {}", node_id)?;

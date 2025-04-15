@@ -14,9 +14,9 @@ use std::{
 use tokio::runtime::Runtime;
 use uuid::Uuid;
 
-static TOPICS_TABLE: &'static str = "juno_topics";
-static SUBSCRIPTIONS_TABLE: &'static str = "juno_subscriptions";
-static MESSAGES_TABLE: &'static str = "juno_messages";
+pub static TOPICS_TABLE: &'static str = "juno_topics";
+pub static SUBSCRIPTIONS_TABLE: &'static str = "juno_subscriptions";
+pub static MESSAGES_TABLE: &'static str = "juno_messages";
 
 pub fn api_create_topic(i: usize, rt: &Runtime, mut stream: TcpStream, client: &Client, topic: &str) -> Result<()> {
     let start = Instant::now();

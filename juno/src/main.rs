@@ -8,7 +8,11 @@ use broadcast::*;
 use clap::Parser;
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use ctrlc;
-use google_cloud_spanner::client::{Client, ClientConfig};
+use google_cloud_spanner::{
+    bigdecimal::num_traits::float,
+    client::{Client, ClientConfig},
+    statement::Statement,
+};
 use hedge_rs::*;
 use log::*;
 use send::*;
@@ -23,7 +27,7 @@ use std::{
         mpsc,
     },
     thread,
-    time::Instant,
+    time::{Duration, Instant},
 };
 use tokio::runtime::Runtime;
 
@@ -63,11 +67,7 @@ struct Args {
 #[derive(Debug)]
 enum WorkerCtrl {
     HandleApi(TcpStream),
-    PingMember(String),
-    ToLeader {
-        msg: Vec<u8>,
-        tx: Sender<Vec<u8>>,
-    },
+    GetMeta(Sender<HashMap<String, Vec<Subscription>>>),
     Broadcast {
         name: String,
         msg: Vec<u8>,
@@ -312,6 +312,70 @@ fn main() -> Result<()> {
                             _ => {}
                         }
                     }
+                    WorkerCtrl::GetMeta(tx) => {
+                        let (tx_rt, rx_rt): (Sender<Subscription>, Receiver<Subscription>) = unbounded();
+                        rt.block_on(async {
+                            let mut q = String::new();
+                            write!(&mut q, "select TopicName, SubscriptionName, ").unwrap();
+                            write!(&mut q, "AcknowledgeTimeout, AutoExtend ").unwrap();
+                            write!(&mut q, "from {}", SUBSCRIPTIONS_TABLE).unwrap();
+                            let stmt = Statement::new(q);
+                            let mut tx = client.single().await.unwrap();
+                            let mut iter = tx.query(stmt).await.unwrap();
+                            while let Some(row) = iter.next().await.unwrap() {
+                                let t = row.column_by_name::<String>("TopicName").unwrap();
+                                let s = row.column_by_name::<String>("SubscriptionName").unwrap();
+                                let a = row.column_by_name::<i64>("AcknowledgeTimeout").unwrap();
+                                let x = row.column_by_name::<bool>("AutoExtend").unwrap();
+                                let ts = format!("{}/{}", t, s);
+                                tx_rt
+                                    .send(Subscription {
+                                        name: ts,
+                                        ack_timeout: a,
+                                        auto_extend: x,
+                                    })
+                                    .unwrap();
+                            }
+
+                            tx_rt
+                                .send(Subscription {
+                                    name: "".to_string(),
+                                    ack_timeout: 0,
+                                    auto_extend: false,
+                                })
+                                .unwrap();
+                        });
+
+                        let mut hm: HashMap<String, Vec<Subscription>> = HashMap::new();
+
+                        loop {
+                            let sub = rx_rt.recv().unwrap();
+                            if sub.name == "" {
+                                break;
+                            }
+
+                            let ts: Vec<&str> = sub.name.split("/").collect();
+                            if hm.contains_key(ts[0]) {
+                                let v = hm.get_mut(ts[0]).unwrap();
+                                v.push(Subscription {
+                                    name: ts[1].to_string(),
+                                    ack_timeout: sub.ack_timeout,
+                                    auto_extend: sub.auto_extend,
+                                });
+                            } else {
+                                hm.insert(
+                                    ts[0].to_string(),
+                                    vec![Subscription {
+                                        name: ts[1].to_string(),
+                                        ack_timeout: sub.ack_timeout,
+                                        auto_extend: sub.auto_extend,
+                                    }],
+                                );
+                            }
+                        }
+
+                        tx.send(hm).unwrap();
+                    }
                     _ => {} // add here for tasks that need these workers
                 }
             }
@@ -332,6 +396,37 @@ fn main() -> Result<()> {
             };
 
             tx_api.send(WorkerCtrl::HandleApi(stream)).unwrap();
+        }
+    });
+
+    // Start a new thread for leader to broadcast changes to topic/subs and messages.
+    let tx_ldr = tx_work.clone();
+    thread::spawn(move || {
+        loop {
+            defer! {
+                thread::sleep(Duration::from_secs(5));
+            }
+
+            if leader.load(Ordering::Acquire) == 0 {
+                continue;
+            }
+
+            let (tx, rx): (
+                Sender<HashMap<String, Vec<Subscription>>>,
+                Receiver<HashMap<String, Vec<Subscription>>>,
+            ) = unbounded();
+
+            tx_ldr.send(WorkerCtrl::GetMeta(tx)).unwrap();
+            let hm = rx.recv().unwrap();
+            for (topic, meta) in hm.iter() {
+                info!("topic: {}", topic);
+                for sub in meta {
+                    info!("  meta.sub.name: {}", sub.name);
+                    info!("  meta.sub.ack_timeout: {}", sub.ack_timeout);
+                    info!("  meta.sub.auto_extend: {}", sub.auto_extend);
+                    info!("  ---");
+                }
+            }
         }
     });
 
