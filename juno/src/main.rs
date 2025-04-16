@@ -98,10 +98,6 @@ fn main() -> Result<()> {
     let (tx_ctrlc, rx_ctrlc) = mpsc::channel();
     ctrlc::set_handler(move || tx_ctrlc.send(()).unwrap())?;
 
-    // We will use this channel for the 'send' and 'broadcast' features.
-    // Use Sender as inputs, then we read replies through the Receiver.
-    let (tx_op, rx_op): (mpsc::Sender<Comms>, mpsc::Receiver<Comms>) = mpsc::channel();
-
     let mut db_hedge = String::new();
     if args.db_hedge == "--db" {
         db_hedge = args.db.clone();
@@ -116,6 +112,10 @@ fn main() -> Result<()> {
     let tm: Arc<Mutex<HashMap<String, Arc<Mutex<Meta>>>>> = Arc::new(Mutex::new(HashMap::new()));
 
     let leader = Arc::new(AtomicUsize::new(0)); // for leader state change callback
+
+    // We will use this channel for the 'send' and 'broadcast' features.
+    // Use Sender as inputs, then we read replies through the Receiver.
+    let (tx_op, rx_op): (mpsc::Sender<Comms>, mpsc::Receiver<Comms>) = mpsc::channel();
 
     // Setup hedge-rs.Op as our memberlist manager.
     let op = Arc::new(Mutex::new(
@@ -134,20 +134,20 @@ fn main() -> Result<()> {
     }
 
     // Start a new thread that will serve as handlers for both send() and broadcast() APIs.
-    let leader_clone = leader.clone();
+    let leader_cb = leader.clone();
     thread::spawn(move || {
         loop {
             match rx_op.recv() {
                 Err(_) => continue,
                 Ok(v) => match v {
                     Comms::ToLeader { msg, tx } => {
-                        let _ = handle_toleader(&args.id, msg, tx, &tm, &leader_clone);
+                        let _ = handle_toleader(&args.id, msg, tx, &tm, &leader_cb);
                     }
                     Comms::Broadcast { msg, tx } => {
-                        let _ = handle_broadcast(&args.id, msg, tx, &tm, &leader_clone);
+                        let _ = handle_broadcast(&args.id, msg, tx, &tm, &leader_cb);
                     }
                     Comms::OnLeaderChange(state) => {
-                        leader_clone.store(state, Ordering::Relaxed);
+                        leader_cb.store(state, Ordering::Relaxed);
                     }
                 },
             }
@@ -177,8 +177,8 @@ fn main() -> Result<()> {
     // Start our API worker threads.
     for i in 0..v_rt.len() {
         let rxc = rxh.clone();
-        let db_clone = args.db.clone();
-        let op_clone = op.clone();
+        let db_work = args.db.clone();
+        let op_work = op.clone();
         let rt = v_rt[i].clone();
         thread::spawn(move || {
             let (tx, rx): (Sender<Option<Client>>, Receiver<Option<Client>>) = unbounded();
@@ -187,7 +187,7 @@ fn main() -> Result<()> {
                 match config {
                     Err(_) => tx.send(None).unwrap(),
                     Ok(v) => {
-                        let client = Client::new(db_clone, v).await;
+                        let client = Client::new(db_work, v).await;
                         match client {
                             Ok(v) => tx.send(Some(v)).unwrap(),
                             Err(e) => {
@@ -311,7 +311,7 @@ fn main() -> Result<()> {
                                 let line = &data[1..&data.len() - 1];
                                 if let Ok(bc) = api_publish_msg(i, &rt, stream, &client, line) {
                                     if bc {
-                                        let _ = broadcast_publish_msg(&op_clone, line);
+                                        let _ = broadcast_publish_msg(&op_work, line);
                                     }
                                 }
                             }
