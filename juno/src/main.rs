@@ -6,7 +6,7 @@ use std::{
     collections::HashMap,
     fmt::Write as _,
     io::{BufReader, prelude::*},
-    net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream},
+    net::{TcpListener, TcpStream},
     sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
