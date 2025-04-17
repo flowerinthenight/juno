@@ -62,17 +62,6 @@ struct Args {
     name: String,
 }
 
-#[derive(Debug)]
-enum WorkerCtrl {
-    HandleApi(TcpStream),
-    GetMeta(Sender<HashMap<String, Vec<Subscription>>>),
-    Broadcast {
-        name: String,
-        msg: Vec<u8>,
-        tx: Sender<Vec<u8>>,
-    },
-}
-
 struct Subscription {
     name: String,
     ack_timeout: i64,
@@ -88,6 +77,12 @@ struct Message {
 struct Meta {
     subs: Vec<Subscription>,
     msgs: Vec<Message>,
+}
+
+#[derive(Debug)]
+enum WorkerCtrl {
+    HandleApi(TcpStream),
+    GetMeta(Sender<HashMap<String, Vec<Subscription>>>),
 }
 
 fn main() -> Result<()> {
