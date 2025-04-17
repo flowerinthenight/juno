@@ -28,7 +28,6 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use tokio::runtime::Runtime;
 
 #[macro_use(defer)]
 extern crate scopeguard;
@@ -167,11 +166,11 @@ fn main() -> Result<()> {
         }
     }
 
-    // We use a single Tokio runtime.
-    let a_rt = Arc::new(Runtime::new()?);
+    // We use a single Tokio runtime and pass it around where needed.
+    let runtime = Arc::new(tokio::runtime::Builder::new_multi_thread().enable_all().build()?);
     let mut v_rt = vec![];
     for _ in 0..cpus {
-        v_rt.push(a_rt.clone());
+        v_rt.push(runtime.clone());
     }
 
     // Start our API worker threads.
@@ -388,23 +387,6 @@ fn main() -> Result<()> {
         });
     }
 
-    // Starts a new thread for the API.
-    let tx_api = tx_work.clone();
-    thread::spawn(move || {
-        let listen = TcpListener::bind(&args.api).unwrap();
-        for stream in listen.incoming() {
-            let stream = match stream {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("stream failed: {e}");
-                    continue;
-                }
-            };
-
-            tx_api.send(WorkerCtrl::HandleApi(stream)).unwrap();
-        }
-    });
-
     // Start a new thread for leader to broadcast changes to topic/subs and messages.
     let tx_ldr = tx_work.clone();
     thread::spawn(move || {
@@ -433,6 +415,23 @@ fn main() -> Result<()> {
                     info!("  ---");
                 }
             }
+        }
+    });
+
+    // Starts a new thread for the API.
+    let tx_api = tx_work.clone();
+    thread::spawn(move || {
+        let listen = TcpListener::bind(&args.api).unwrap();
+        for stream in listen.incoming() {
+            let stream = match stream {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("stream failed: {e}");
+                    continue;
+                }
+            };
+
+            tx_api.send(WorkerCtrl::HandleApi(stream)).unwrap();
         }
     });
 
