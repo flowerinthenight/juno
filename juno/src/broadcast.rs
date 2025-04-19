@@ -11,7 +11,6 @@ use std::{
 
 use anyhow::Result;
 
-static NEWMSG: &str = "NM"; // New message published
 
 // This is our 'broadcast' handler. When a node broadcasts a
 // message, through the broadcast() API, we reply here.
@@ -33,7 +32,7 @@ pub async fn handle_broadcast(
 
     match parts.first() {
         // Store message in memory
-        Some(&cmd) if cmd == NEWMSG => {
+        Some(&cmd) if cmd == "NM" => {
             let mut parts = msg_s.splitn(3, ' ');
             let msg_id = match parts.next() {
                 Some(id) => id.to_string(),
