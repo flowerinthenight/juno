@@ -31,7 +31,7 @@ pub async fn handle_broadcast(
     let parts: Vec<&str> = msg_s.split(" ").collect();
 
     match parts.first() {
-        // Store message in memory
+        // New message broadcast type, store in memory.
         // fmt: "NM <msg_id> <topic> <payload> <attributes>"
         Some(&cmd) if cmd == "NM" => {
             let mut parts = msg_s.splitn(3, ' ');
