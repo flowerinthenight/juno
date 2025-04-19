@@ -46,6 +46,7 @@ INTERLEAVE IN PARENT juno_topics ON DELETE CASCADE;
 
 ```bash
 # Build:
+$ cd <clone>/juno/
 $ cargo build
 
 # Run locally (1st instance):
