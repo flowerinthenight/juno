@@ -32,6 +32,7 @@ pub async fn handle_broadcast(
 
     match parts.first() {
         // Store message in memory
+        // fmt: "NM <msg_id> <topic> <payload> <attributes>"
         Some(&cmd) if cmd == "NM" => {
             let mut parts = msg_s.splitn(3, ' ');
             let msg_id = match parts.next() {
