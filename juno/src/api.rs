@@ -1,8 +1,14 @@
 use std::{
+    collections::HashMap,
     fmt::Write as _,
     io::prelude::*,
     net::TcpStream,
-    sync::{Arc, Mutex, mpsc},
+    ptr::write_bytes,
+    sync::{
+        Arc, Mutex,
+        atomic::{self, AtomicBool},
+        mpsc,
+    },
     time::Instant,
 };
 
@@ -14,6 +20,8 @@ use log::*;
 use regex::Regex;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
+
+use crate::{Message, MessageMeta, Subscription, utils::get_all_subs_for_topic};
 
 pub static TOPICS_TABLE: &'static str = "juno_topics";
 pub static SUBSCRIPTIONS_TABLE: &'static str = "juno_subscriptions";
@@ -382,5 +390,47 @@ pub fn broadcast_publish_msg(op: &Arc<Mutex<Op>>, msg: &str) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+pub fn fetch_all_msgs_then_broadcast(
+    op: &Arc<Mutex<Op>>,
+    client: &Client,
+    rt: &Runtime,
+    ts: &Arc<Mutex<HashMap<String, Arc<Mutex<Vec<Subscription>>>>>>,
+) -> Result<()> {
+    rt.block_on(async {
+        let mut q = String::new();
+        write!(&mut q, "select TopicName, Id, ").unwrap();
+        write!(&mut q, "Payload, Attributes ").unwrap();
+        write!(&mut q, "from {} where Acknowledged = False", MESSAGES_TABLE).unwrap();
+        let stmt = Statement::new(q);
+        let mut tx = client.single().await.unwrap();
+        let mut iter = tx.query(stmt).await.unwrap();
+        while let Some(row) = iter.next().await.unwrap() {
+            let tn = row.column_by_name::<String>("TopicName").unwrap();
+            let id = row.column_by_name::<String>("Id").unwrap();
+            let p = row.column_by_name::<i64>("Payload").unwrap();
+            let at = row.column_by_name::<bool>("Attributes").unwrap();
+
+            let mut fsubs: Vec<MessageMeta> = vec![];
+            let subs = get_all_subs_for_topic(&tn, ts);
+            for s in subs.iter() {
+                let to_append = MessageMeta {
+                    acknowledged: AtomicBool::new(false),
+                    locked: AtomicBool::new(false),
+                    subscription: s.name.clone(),
+                };
+                fsubs.push(to_append);
+            }
+            let d = Message {
+                id,
+                data: p.to_string(),
+                attrs: at.to_string(),
+                meta: fsubs,
+                final_deleted: atomic::AtomicBool::new(false),
+            };
+        }
+    });
     Ok(())
 }

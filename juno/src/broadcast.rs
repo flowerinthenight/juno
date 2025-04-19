@@ -1,6 +1,8 @@
+use crate::utils::get_all_subs_for_topic;
 use crate::utils::insert_message;
-use crate::{Message, Meta, Subscription};
+use crate::{Message, MessageMeta, Subscription};
 
+use std::sync::atomic::AtomicBool;
 use std::{
     collections::HashMap,
     fmt::Write as _,
@@ -47,8 +49,17 @@ pub async fn handle_broadcast(
                 None => return Ok(()),
             };
             let attrs = parts.next().unwrap_or("").to_string();
-
-            insert_message(&tm, msg_id, topic, data, attrs);
+            let mut fmeta: Vec<MessageMeta> = vec![];
+            let subs = get_all_subs_for_topic(&topic, ts);
+            for s in subs.iter() {
+                let to_append = MessageMeta {
+                    acknowledged: AtomicBool::new(false),
+                    locked: AtomicBool::new(false),
+                    subscription: s.name.clone(),
+                };
+                fmeta.push(to_append);
+            }
+            insert_message(&tm, msg_id, topic, data, attrs, fmeta);
         }
         Some(_) => {}
         None => {

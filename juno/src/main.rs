@@ -10,7 +10,7 @@ use std::{
     net::{TcpListener, TcpStream},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{self, AtomicUsize, Ordering},
         mpsc,
     },
     thread,
@@ -64,7 +64,7 @@ struct Args {
     #[arg(short, long, default_value = "juno")]
     name: String,
 }
-
+#[derive(Clone)]
 struct Subscription {
     name: String,
     ack_timeout: i64,
@@ -75,6 +75,14 @@ struct Message {
     id: String,
     data: String,
     attrs: String,
+    meta: Vec<MessageMeta>,
+    final_deleted: atomic::AtomicBool,
+}
+
+struct MessageMeta {
+    subscription: String,
+    acknowledged: atomic::AtomicBool,
+    locked: atomic::AtomicBool,
 }
 
 struct Meta {
