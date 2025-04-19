@@ -43,3 +43,28 @@ CREATE TABLE juno_messages (
 ) PRIMARY KEY(TopicName, Id),
 INTERLEAVE IN PARENT juno_topics ON DELETE CASCADE;
 ```
+
+```bash
+# Build:
+$ cargo build
+
+# Run locally (1st instance):
+$ RUST_LOG=info ./target/debug/juno \
+  --id 0.0.0.0:8080 \
+  --db projects/p/instances/i/databases/db \
+  --table {tablename}
+
+# Run 2nd instance:
+$ RUST_LOG=info ./target/debug/juno \
+  --id 0.0.0.0:8081 \
+  --db projects/p/instances/i/databases/db \
+  --table {tablename}
+  --api 0.0.0.0:9091
+
+# Run 3rd instance:
+$ RUST_LOG=info ./target/debug/juno \
+  --id 0.0.0.0:8082 \
+  --db projects/p/instances/i/databases/db \
+  --table {tablename}
+  --api 0.0.0.0:9092
+```
