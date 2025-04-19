@@ -1,8 +1,14 @@
 use std::{
+    collections::HashMap,
     fmt::Write as _,
     io::prelude::*,
     net::TcpStream,
-    sync::{Arc, Mutex, mpsc},
+    ptr::write_bytes,
+    sync::{
+        Arc, Mutex,
+        atomic::{self, AtomicBool},
+        mpsc,
+    },
     time::Instant,
 };
 
@@ -14,6 +20,8 @@ use log::*;
 use regex::Regex;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
+
+use crate::{Message, MessageMeta, Subscription, utils::get_all_subs_for_topic};
 
 pub static TOPICS_TABLE: &'static str = "juno_topics";
 pub static SUBSCRIPTIONS_TABLE: &'static str = "juno_subscriptions";
@@ -289,7 +297,7 @@ pub fn api_delete_sub(i: usize, rt: &Runtime, mut stream: TcpStream, client: &Cl
     Ok(())
 }
 
-pub fn api_publish_msg(i: usize, rt: &Runtime, mut stream: TcpStream, client: &Client, line: &str) -> Result<bool> {
+pub fn api_publish_msg(i: usize, rt: &Runtime, mut stream: TcpStream, client: &Client, line: &str) -> Result<String> {
     let start = Instant::now();
 
     defer! {
@@ -301,7 +309,7 @@ pub fn api_publish_msg(i: usize, rt: &Runtime, mut stream: TcpStream, client: &C
         let mut err = String::new();
         write!(&mut err, "-Invalid payload format\n")?;
         let _ = stream.write_all(err.as_bytes());
-        return Ok(false);
+        return Ok(String::new());
     }
 
     let msg_id = Uuid::new_v4().to_string();
@@ -356,13 +364,14 @@ pub fn api_publish_msg(i: usize, rt: &Runtime, mut stream: TcpStream, client: &C
 
     let _ = stream.write_all(ack.as_bytes());
     if !broadcast {
-        return Ok(false);
+        return Ok(String::new());
     }
 
-    Ok(true)
+    Ok(msg_id)
 }
 
 pub fn broadcast_publish_msg(op: &Arc<Mutex<Op>>, msg: &str) -> Result<()> {
+    info!("Broadcasting message: {}", msg);
     let (tx, rx): (mpsc::Sender<Broadcast>, mpsc::Receiver<Broadcast>) = mpsc::channel();
 
     {
@@ -376,9 +385,43 @@ pub fn broadcast_publish_msg(op: &Arc<Mutex<Op>>, msg: &str) -> Result<()> {
                 if id == "" || msg.len() == 0 {
                     break;
                 }
+                println!("Broadcast reply: {}", String::from_utf8(msg)?);
             }
         }
     }
 
+    Ok(())
+}
+
+pub fn fetch_all_msgs_then_broadcast(
+    op: &Arc<Mutex<Op>>,
+    client: &Client,
+    rt: &Runtime,
+) -> Result<()> {
+    rt.block_on(async {
+        let mut q = String::new();
+        write!(&mut q, "select TopicName, Id, ").unwrap();
+        write!(&mut q, "Payload, Attributes ").unwrap();
+        write!(&mut q, "from {} where Acknowledged = False", MESSAGES_TABLE).unwrap();
+        let stmt = Statement::new(q);
+        let mut tx = client.single().await.unwrap();
+        let mut iter = tx.query(stmt).await.unwrap();
+        while let Some(row) = iter.next().await.unwrap() {
+            let tn = row.column_by_name::<String>("TopicName").unwrap();
+            let id = row.column_by_name::<String>("Id").unwrap();
+            let payload = row.column_by_name::<String>("Payload").unwrap();
+            let at = row.column_by_name::<String>("Attributes").unwrap();
+            let mut p = String::new();
+            p.push_str("NM ");
+            p.push_str(&id);
+            p.push_str(" ");
+            p.push_str(&tn);
+            p.push_str(" ");
+            p.push_str(&payload);
+            p.push_str(" ");
+            p.push_str(&at);
+            broadcast_publish_msg(op, &p).unwrap();
+        }
+    });
     Ok(())
 }
