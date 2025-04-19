@@ -85,6 +85,7 @@ struct Meta {
 enum WorkerCtrl {
     HandleApi(TcpStream),
     GetMeta(Sender<HashMap<String, Vec<Subscription>>>),
+    GetNumMsgInMemory(Sender<usize>),
 }
 
 fn main() -> Result<()> {
@@ -129,18 +130,39 @@ fn main() -> Result<()> {
         op.lock().unwrap().run()?;
     }
 
+    // We use a single Tokio runtime and pass it around where needed.
+    let runtime = Arc::new(tokio::runtime::Builder::new_multi_thread().enable_all().build()?);
+    let mut v_rt = vec![];
+    let cpus = num_cpus::get();
+    for _ in 0..cpus {
+        v_rt.push(runtime.clone());
+    }
+
     // Start a new thread that will serve as handlers for both send() and broadcast() APIs.
     let leader_cb = leader.clone();
+    let tm_thread = tm.clone();
+    let rt = runtime.clone();
     thread::spawn(move || {
         loop {
             match rx_op.recv() {
                 Err(_) => continue,
                 Ok(v) => match v {
                     Comms::ToLeader { msg, tx } => {
-                        let _ = handle_toleader(&args.id, msg, tx, &tm, &leader_cb);
+                        let id = args.id.clone();
+                        let tm = tm_thread.clone();
+                        let leader_cb = leader_cb.clone();
+                        rt.spawn(async move {
+                            let msg = msg.clone();
+                            let _ = handle_toleader(&id, msg, tx, &tm, &leader_cb).await;
+                        });
                     }
                     Comms::Broadcast { msg, tx } => {
-                        let _ = handle_broadcast(&args.id, msg, tx, &tm, &leader_cb);
+                        let tm = tm_thread.clone();
+                        let leader_cb = leader_cb.clone();
+                        let id = args.id.clone();
+                        rt.spawn(async move {
+                            let _ = handle_broadcast(&id, msg, tx, &tm, &leader_cb).await;
+                        });
                     }
                     Comms::OnLeaderChange(state) => {
                         leader_cb.store(state, Ordering::Relaxed);
@@ -152,7 +174,6 @@ fn main() -> Result<()> {
 
     let (tx_work, rx_work): (Sender<WorkerCtrl>, Receiver<WorkerCtrl>) = unbounded();
     let rxh: Arc<Mutex<HashMap<usize, Receiver<WorkerCtrl>>>> = Arc::new(Mutex::new(HashMap::new()));
-    let cpus = num_cpus::get();
 
     for i in 0..cpus {
         let recv = rxh.clone();
@@ -163,19 +184,14 @@ fn main() -> Result<()> {
         }
     }
 
-    // We use a single Tokio runtime and pass it around where needed.
-    let runtime = Arc::new(tokio::runtime::Builder::new_multi_thread().enable_all().build()?);
-    let mut v_rt = vec![];
-    for _ in 0..cpus {
-        v_rt.push(runtime.clone());
-    }
-
     // Start our API worker threads.
     for i in 0..v_rt.len() {
         let rxc = rxh.clone();
         let db_work = args.db.clone();
         let op_work = op.clone();
         let rt = v_rt[i].clone();
+
+        let tm_thread = tm.clone();
         thread::spawn(move || {
             let (tx, rx): (Sender<Option<Client>>, Receiver<Option<Client>>) = unbounded();
             rt.block_on(async {
@@ -307,7 +323,9 @@ fn main() -> Result<()> {
                                 let line = &data[1..&data.len() - 1];
                                 if let Ok(bc) = api_publish_msg(i, &rt, stream, &client, line) {
                                     if bc {
-                                        let _ = broadcast_publish_msg(&op_work, line);
+                                        let mut newline = String::from("NM ");
+                                        newline.push_str(line);
+                                        let _ = broadcast_publish_msg(&op_work, &newline);
                                     }
                                 }
                             }
@@ -378,6 +396,15 @@ fn main() -> Result<()> {
 
                         tx.send(hm).unwrap();
                     }
+                    WorkerCtrl::GetNumMsgInMemory(tx) => {
+                        let mut num = 0;
+                        let tm = tm_thread.lock().unwrap();
+                        for (_, meta) in tm.iter() {
+                            let meta = meta.lock().unwrap();
+                            num += meta.msgs.len();
+                        }
+                        tx.send(num).unwrap();
+                    }
                     _ => {} // add here for tasks that need these workers
                 }
             }
@@ -412,6 +439,12 @@ fn main() -> Result<()> {
                     info!("  ---");
                 }
             }
+
+            let (tx, rx): (Sender<usize>, Receiver<usize>) = unbounded();
+
+            tx_ldr.send(WorkerCtrl::GetNumMsgInMemory(tx)).unwrap();
+            let hm = rx.recv().unwrap();
+            info!("num messages in memory: {}", hm);
         }
     });
 

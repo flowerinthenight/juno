@@ -10,7 +10,7 @@ use anyhow::Result;
 
 // This is our 'send' handler. When we are leader, we reply to all
 // messages coming from other nodes using the send() API here.
-pub fn handle_toleader(
+pub async fn handle_toleader(
     node_id: &str,
     msg: Vec<u8>,
     tx: mpsc::Sender<Vec<u8>>,

@@ -363,6 +363,7 @@ pub fn api_publish_msg(i: usize, rt: &Runtime, mut stream: TcpStream, client: &C
 }
 
 pub fn broadcast_publish_msg(op: &Arc<Mutex<Op>>, msg: &str) -> Result<()> {
+    info!("Broadcasting message: {}", msg);
     let (tx, rx): (mpsc::Sender<Broadcast>, mpsc::Receiver<Broadcast>) = mpsc::channel();
 
     {
@@ -376,6 +377,7 @@ pub fn broadcast_publish_msg(op: &Arc<Mutex<Op>>, msg: &str) -> Result<()> {
                 if id == "" || msg.len() == 0 {
                     break;
                 }
+                println!("Broadcast reply: {}", String::from_utf8(msg)?);
             }
         }
     }
