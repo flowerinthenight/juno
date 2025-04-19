@@ -11,7 +11,6 @@ use std::{
 
 use anyhow::Result;
 
-
 // This is our 'broadcast' handler. When a node broadcasts a
 // message, through the broadcast() API, we reply here.
 pub async fn handle_broadcast(

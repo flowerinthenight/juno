@@ -397,7 +397,6 @@ pub fn fetch_all_msgs_then_broadcast(
     op: &Arc<Mutex<Op>>,
     client: &Client,
     rt: &Runtime,
-    ts: &Arc<Mutex<HashMap<String, Arc<Mutex<Vec<Subscription>>>>>>,
 ) -> Result<()> {
     rt.block_on(async {
         let mut q = String::new();
@@ -410,27 +409,18 @@ pub fn fetch_all_msgs_then_broadcast(
         while let Some(row) = iter.next().await.unwrap() {
             let tn = row.column_by_name::<String>("TopicName").unwrap();
             let id = row.column_by_name::<String>("Id").unwrap();
-            let p = row.column_by_name::<i64>("Payload").unwrap();
-            let at = row.column_by_name::<bool>("Attributes").unwrap();
-
-            let mut fsubs: Vec<MessageMeta> = vec![];
-            let subs = get_all_subs_for_topic(&tn, ts);
-            for s in subs.iter() {
-                let to_append = MessageMeta {
-                    acknowledged: AtomicBool::new(false),
-                    locked: AtomicBool::new(false),
-                    subscription: s.name.clone(),
-                };
-                fsubs.push(to_append);
-            }
-            let d = Message {
-                id,
-                data: p.to_string(),
-                attrs: at.to_string(),
-                meta: fsubs,
-                final_deleted: atomic::AtomicBool::new(false),
-            };
-            // Todo: broadcast to all nodes
+            let payload = row.column_by_name::<String>("Payload").unwrap();
+            let at = row.column_by_name::<String>("Attributes").unwrap();
+            let mut p = String::new();
+            p.push_str("NM ");
+            p.push_str(&id);
+            p.push_str(" ");
+            p.push_str(&tn);
+            p.push_str(" ");
+            p.push_str(&payload);
+            p.push_str(" ");
+            p.push_str(&at);
+            broadcast_publish_msg(op, &p).unwrap();
         }
     });
     Ok(())
