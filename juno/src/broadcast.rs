@@ -33,6 +33,11 @@ pub async fn handle_broadcast(
         // Store message in memory
         Some(&cmd) if cmd == NEWMSG => {
             let mut parts = msg_s.splitn(3, ' ');
+            let msg_id = match parts.next() {
+                Some(id) => id.to_string(),
+                None => return Ok(()),
+            };
+
             let topic = match parts.next() {
                 Some(t) => t.to_string(),
                 None => return Ok(()),
@@ -43,7 +48,7 @@ pub async fn handle_broadcast(
             };
             let attrs = parts.next().unwrap_or("").to_string();
 
-            insert_message(&tm, &topic, data, attrs);
+            insert_message(&tm, msg_id, topic, data, attrs);
         }
         Some(_) => {}
         None => {

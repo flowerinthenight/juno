@@ -4,7 +4,8 @@ use std::sync::{Arc, Mutex};
 
 pub fn insert_message(
     tm: &Arc<Mutex<HashMap<String, Arc<Mutex<Vec<Message>>>>>>,
-    topic: &str,
+    id: String,
+    topic: String,
     data: String,
     attrs: String,
 ) {
@@ -13,11 +14,7 @@ pub fn insert_message(
         .entry(topic.to_string())
         .or_insert_with(|| Arc::new(Mutex::new(vec![])));
     let mut meta_guard = meta.lock().unwrap();
-    meta_guard.push(Message {
-        id: uuid::Uuid::new_v4().to_string(),
-        data,
-        attrs,
-    });
+    meta_guard.push(Message { id, data, attrs });
 }
 
 pub fn delete_messages(tm: &Arc<Mutex<HashMap<String, Arc<Mutex<Vec<Message>>>>>>, topic: &str) {

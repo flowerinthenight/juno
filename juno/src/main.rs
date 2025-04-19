@@ -328,8 +328,10 @@ fn main() -> Result<()> {
                             "#" => {
                                 let line = &data[1..&data.len() - 1];
                                 if let Ok(bc) = api_publish_msg(i, &rt, stream, &client, line) {
-                                    if bc {
+                                    if !bc.is_empty() {
                                         let mut newline = String::from("NM ");
+                                        newline.push_str(&bc);
+                                        newline.push_str(" ");
                                         newline.push_str(line);
                                         let _ = broadcast_publish_msg(&op_work, &newline);
                                     }

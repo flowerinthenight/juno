@@ -289,7 +289,7 @@ pub fn api_delete_sub(i: usize, rt: &Runtime, mut stream: TcpStream, client: &Cl
     Ok(())
 }
 
-pub fn api_publish_msg(i: usize, rt: &Runtime, mut stream: TcpStream, client: &Client, line: &str) -> Result<bool> {
+pub fn api_publish_msg(i: usize, rt: &Runtime, mut stream: TcpStream, client: &Client, line: &str) -> Result<String> {
     let start = Instant::now();
 
     defer! {
@@ -301,7 +301,7 @@ pub fn api_publish_msg(i: usize, rt: &Runtime, mut stream: TcpStream, client: &C
         let mut err = String::new();
         write!(&mut err, "-Invalid payload format\n")?;
         let _ = stream.write_all(err.as_bytes());
-        return Ok(false);
+        return Ok(String::new());
     }
 
     let msg_id = Uuid::new_v4().to_string();
@@ -356,10 +356,10 @@ pub fn api_publish_msg(i: usize, rt: &Runtime, mut stream: TcpStream, client: &C
 
     let _ = stream.write_all(ack.as_bytes());
     if !broadcast {
-        return Ok(false);
+        return Ok(String::new());
     }
 
-    Ok(true)
+    Ok(msg_id)
 }
 
 pub fn broadcast_publish_msg(op: &Arc<Mutex<Op>>, msg: &str) -> Result<()> {
