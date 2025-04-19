@@ -1,4 +1,4 @@
-use crate::Meta;
+use crate::{Message, Meta, Subscription};
 
 use std::{
     collections::HashMap,
@@ -14,7 +14,8 @@ pub async fn handle_toleader(
     node_id: &str,
     msg: Vec<u8>,
     tx: mpsc::Sender<Vec<u8>>,
-    tm: &Arc<Mutex<HashMap<String, Arc<Mutex<Meta>>>>>,
+    ts: &Arc<Mutex<HashMap<String, Arc<Mutex<Vec<Subscription>>>>>>,
+    tm: &Arc<Mutex<HashMap<String, Arc<Mutex<Vec<Message>>>>>>,
     _leader: &Arc<AtomicUsize>,
 ) -> Result<()> {
     let tm = tm.clone();

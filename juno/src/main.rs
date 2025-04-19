@@ -1,6 +1,7 @@
 mod api;
 mod broadcast;
 mod send;
+mod utils;
 
 use std::{
     collections::HashMap,
@@ -105,8 +106,10 @@ fn main() -> Result<()> {
         &args.id, &args.api, &args.db, &db_hedge, &args.table, &args.name
     );
 
-    // Key is topic name, value is metadata for the associated subscriptions and messages.
-    let tm: Arc<Mutex<HashMap<String, Arc<Mutex<Meta>>>>> = Arc::new(Mutex::new(HashMap::new()));
+    // Key=topic, val=Vec<Subscription>
+    let ts: Arc<Mutex<HashMap<String, Arc<Mutex<Vec<Subscription>>>>>> = Arc::new(Mutex::new(HashMap::new()));
+    // Key=topic val=Vec<Message>
+    let tm: Arc<Mutex<HashMap<String, Arc<Mutex<Vec<Message>>>>>> = Arc::new(Mutex::new(HashMap::new()));
 
     let leader = Arc::new(AtomicUsize::new(0)); // for leader state change callback
 
@@ -141,6 +144,7 @@ fn main() -> Result<()> {
     // Start a new thread that will serve as handlers for both send() and broadcast() APIs.
     let leader_cb = leader.clone();
     let tm_thread = tm.clone();
+    let ts_thread = ts.clone();
     let rt = runtime.clone();
     thread::spawn(move || {
         loop {
@@ -150,18 +154,20 @@ fn main() -> Result<()> {
                     Comms::ToLeader { msg, tx } => {
                         let id = args.id.clone();
                         let tm = tm_thread.clone();
+                        let ts = ts_thread.clone();
                         let leader_cb = leader_cb.clone();
                         rt.spawn(async move {
                             let msg = msg.clone();
-                            let _ = handle_toleader(&id, msg, tx, &tm, &leader_cb).await;
+                            let _ = handle_toleader(&id, msg, tx, &ts, &tm, &leader_cb).await;
                         });
                     }
                     Comms::Broadcast { msg, tx } => {
                         let tm = tm_thread.clone();
+                        let ts = ts_thread.clone();
                         let leader_cb = leader_cb.clone();
                         let id = args.id.clone();
                         rt.spawn(async move {
-                            let _ = handle_broadcast(&id, msg, tx, &tm, &leader_cb).await;
+                            let _ = handle_broadcast(&id, msg, tx, &ts, &tm, &leader_cb).await;
                         });
                     }
                     Comms::OnLeaderChange(state) => {
@@ -401,7 +407,7 @@ fn main() -> Result<()> {
                         let tm = tm_thread.lock().unwrap();
                         for (_, meta) in tm.iter() {
                             let meta = meta.lock().unwrap();
-                            num += meta.msgs.len();
+                            num += meta.len();
                         }
                         tx.send(num).unwrap();
                     }

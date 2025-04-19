@@ -1,4 +1,5 @@
-use crate::Meta;
+use crate::utils::insert_message;
+use crate::{Message, Meta, Subscription};
 
 use std::{
     collections::HashMap,
@@ -7,7 +8,6 @@ use std::{
 };
 
 use anyhow::Result;
-use log::info;
 
 static NEWMSG: &str = "NM"; // New message published
 
@@ -17,11 +17,11 @@ pub async fn handle_broadcast(
     node_id: &str,
     msg: Vec<u8>,
     tx: mpsc::Sender<Vec<u8>>,
-    tm: &Arc<Mutex<HashMap<String, Arc<Mutex<Meta>>>>>,
+    ts: &Arc<Mutex<HashMap<String, Arc<Mutex<Vec<Subscription>>>>>>,
+    tm: &Arc<Mutex<HashMap<String, Arc<Mutex<Vec<Message>>>>>>,
     _leader: &Arc<AtomicUsize>,
 ) -> Result<()> {
     let tm = tm.clone();
-    _ = tm;
 
     let msg_s = String::from_utf8(msg)?;
     let mut reply = String::new();
@@ -43,19 +43,7 @@ pub async fn handle_broadcast(
             };
             let attrs = parts.next().unwrap_or("").to_string();
 
-            let mut tm_guard = tm.lock().unwrap();
-            let meta = tm_guard.entry(topic.clone()).or_insert_with(|| {
-                Arc::new(Mutex::new(Meta {
-                    subs: vec![],
-                    msgs: vec![],
-                }))
-            });
-            let mut meta_guard = meta.lock().unwrap();
-            meta_guard.msgs.push(crate::Message {
-                id: uuid::Uuid::new_v4().to_string(),
-                data,
-                attrs,
-            });
+            insert_message(&tm, &topic, data, attrs);
         }
         Some(_) => {}
         None => {
