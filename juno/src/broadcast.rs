@@ -1,12 +1,10 @@
 use crate::Meta;
-
+use anyhow::Result;
 use std::{
     collections::HashMap,
     fmt::Write as _,
     sync::{Arc, Mutex, atomic::AtomicUsize, mpsc},
 };
-
-use anyhow::Result;
 
 // This is our 'broadcast' handler. When a node broadcasts a
 // message, through the broadcast() API, we reply here.

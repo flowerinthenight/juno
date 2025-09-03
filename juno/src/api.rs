@@ -1,3 +1,9 @@
+use anyhow::Result;
+use crossbeam_channel::{Receiver, Sender, unbounded};
+use google_cloud_spanner::{client::Client, statement::Statement};
+use hedge_rs::*;
+use log::*;
+use regex::Regex;
 use std::{
     fmt::Write as _,
     io::prelude::*,
@@ -5,13 +11,6 @@ use std::{
     sync::{Arc, Mutex, mpsc},
     time::Instant,
 };
-
-use anyhow::Result;
-use crossbeam_channel::{Receiver, Sender, unbounded};
-use google_cloud_spanner::{client::Client, statement::Statement};
-use hedge_rs::*;
-use log::*;
-use regex::Regex;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
 

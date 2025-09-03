@@ -2,6 +2,19 @@ mod api;
 mod broadcast;
 mod send;
 
+use anyhow::Result;
+use api::*;
+use broadcast::*;
+use clap::Parser;
+use crossbeam_channel::{Receiver, Sender, unbounded};
+use ctrlc;
+use google_cloud_spanner::{
+    client::{Client, ClientConfig},
+    statement::Statement,
+};
+use hedge_rs::*;
+use log::*;
+use send::*;
 use std::{
     collections::HashMap,
     fmt::Write as _,
@@ -15,21 +28,6 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-
-use api::*;
-use send::*;
-
-use anyhow::Result;
-use broadcast::*;
-use clap::Parser;
-use crossbeam_channel::{Receiver, Sender, unbounded};
-use ctrlc;
-use google_cloud_spanner::{
-    client::{Client, ClientConfig},
-    statement::Statement,
-};
-use hedge_rs::*;
-use log::*;
 
 #[macro_use(defer)]
 extern crate scopeguard;

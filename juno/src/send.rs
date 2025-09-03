@@ -1,12 +1,10 @@
 use crate::Meta;
-
+use anyhow::Result;
 use std::{
     collections::HashMap,
     fmt::Write as _,
     sync::{Arc, Mutex, atomic::AtomicUsize, mpsc},
 };
-
-use anyhow::Result;
 
 // This is our 'send' handler. When we are leader, we reply to all
 // messages coming from other nodes using the send() API here.
